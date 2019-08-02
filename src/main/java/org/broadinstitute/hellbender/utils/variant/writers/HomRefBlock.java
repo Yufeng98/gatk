@@ -84,7 +84,7 @@ final class HomRefBlock extends GVCFBlock {
     /**
      * Add a homRef block to the current block
      *
-     * @param pos current genomic position
+     * @param pos current genomic position, must be directly following this block (i.e. contiguous and non-overlapping)
      * @param newEnd new calculated block end position
      * @param genotype A non-null Genotype with GQ and DP attributes
      */
