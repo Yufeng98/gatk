@@ -28,7 +28,7 @@ public abstract class GVCFBlock implements Locatable {
         this.minGQ = lowerGQBound;
         this.maxGQ = upperGQBound;
         this.ref = startingVC.getReference();
-        this.end = getStart();
+        this.end = getStart() - 1;
     }
 
     public void add(int pos, Genotype genotype) {add(pos, pos, genotype);}
