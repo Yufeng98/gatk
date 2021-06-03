@@ -99,6 +99,8 @@ public class HaplotypeCallerGenotypingEngine extends AssemblyBasedCallerGenotypi
      * @return                                       A CalledHaplotypes object containing a list of VC's with genotyped events and called haplotypes
      *
      */
+    
+    //Original Method
     public CalledHaplotypes assignGenotypeLikelihoods(final List<Haplotype> haplotypes,
                                                       final ReadLikelihoods<Haplotype> readLikelihoods,
                                                       final Map<String, List<GATKRead>> perSampleFilteredReadList,
@@ -190,6 +192,190 @@ public class HaplotypeCallerGenotypingEngine extends AssemblyBasedCallerGenotypi
 
                 if (withBamOut) {
                     AssemblyBasedCallerUtils.annotateReadLikelihoodsWithSupportedAlleles(call, readAlleleLikelihoods);
+                }
+
+                // maintain the set of all called haplotypes
+                call.getAlleles().stream().map(alleleMapper::get).filter(Objects::nonNull).forEach(calledHaplotypes::addAll);
+            }
+        }
+
+        final List<VariantContext> phasedCalls = doPhysicalPhasing ? phaseCalls(returnCalls, calledHaplotypes) : returnCalls;
+        return new CalledHaplotypes(phasedCalls, calledHaplotypes);
+    }
+    
+    
+    
+    
+    //Prune Method
+    public CalledHaplotypes assignGenotypeLikelihoods(final List<Haplotype> haplotypes,
+                                                      final List<ReadLikelihoods<Haplotype>> readLikelihoods,
+                                                      final Map<String, List<GATKRead>> perSampleFilteredReadList,
+                                                      final byte[] ref,
+                                                      final SimpleInterval refLoc,
+                                                      final SimpleInterval activeRegionWindow,
+                                                      final FeatureContext tracker,
+                                                      final List<VariantContext> activeAllelesToGenotype,
+                                                      final boolean emitReferenceConfidence,
+                                                      final int maxMnpDistance,
+                                                      final SAMFileHeader header,
+                                                      final boolean withBamOut) {
+        // sanity check input arguments
+        Utils.nonEmpty(haplotypes, "haplotypes input should be non-empty and non-null");
+        Utils.validateArg(readLikelihoods.get(0) != null && readLikelihoods.get(0).numberOfSamples() > 0, "readLikelihoods input should be non-empty and non-null");
+        Utils.validateArg(ref != null && ref.length > 0, "ref bytes input should be non-empty and non-null");
+        Utils.nonNull(refLoc, "refLoc must be non-null");
+        Utils.validateArg(refLoc.size() == ref.length, " refLoc length must match ref bytes");
+        Utils.nonNull(activeRegionWindow, "activeRegionWindow must be non-null");
+        Utils.nonNull(activeAllelesToGenotype, "activeAllelesToGenotype must be non-null");
+        Utils.validateArg(refLoc.contains(activeRegionWindow), "refLoc must contain activeRegionWindow");
+        ParamUtils.isPositiveOrZero(maxMnpDistance, "maxMnpDistance may not be negative.");
+
+        // update the haplotypes so we're ready to call, getting the ordered list of positions on the reference
+        // that carry events among the haplotypes
+        final SortedSet<Integer> startPosKeySet = decomposeHaplotypesIntoVariantContexts(haplotypes, ref, refLoc, activeAllelesToGenotype, maxMnpDistance);
+
+        // Walk along each position in the key set and create each event to be outputted
+        final Set<Haplotype> calledHaplotypes = new HashSet<>();
+        final List<VariantContext> returnCalls = new ArrayList<>();
+        final int ploidy = configuration.genotypeArgs.samplePloidy;
+        final List<Allele> noCallAlleles = GATKVariantContextUtils.noCallAlleles(ploidy);
+
+        if (withBamOut) {
+            //add annotations to reads for alignment regions and calling regions
+            AssemblyBasedCallerUtils.annotateReadLikelihoodsWithRegions(readLikelihoods.get(0), activeRegionWindow);
+        }
+
+        boolean recompute_done = false;
+        for( final int loc : startPosKeySet ) {
+            if( loc < activeRegionWindow.getStart() || loc > activeRegionWindow.getEnd() ) {
+                continue;
+            }
+
+            final List<VariantContext> activeEventVariantContexts;
+            if( activeAllelesToGenotype.isEmpty() ) {
+                activeEventVariantContexts = getVariantContextsFromActiveHaplotypes(loc, haplotypes, true);
+            } else { // we are in GGA mode!
+                activeEventVariantContexts = getVariantContextsFromGivenAlleles(loc, activeAllelesToGenotype, true);
+            }
+
+            final List<VariantContext> eventsAtThisLocWithSpanDelsReplaced =
+                    replaceSpanDels(activeEventVariantContexts,
+                            Allele.create(ref[loc - refLoc.getStart()], true),
+                            loc);
+
+            VariantContext mergedVC = AssemblyBasedCallerUtils.makeMergedVariantContext(eventsAtThisLocWithSpanDelsReplaced);
+
+            if( mergedVC == null ) {
+                continue;
+            }
+
+            final Map<Allele, List<Haplotype>> alleleMapper = createAlleleMapper(mergedVC, loc, haplotypes, activeAllelesToGenotype);
+
+            if( configuration.debug && logger != null ) {
+                logger.info("Genotyping event at " + loc + " with alleles = " + mergedVC.getAlleles());
+            }
+
+            mergedVC = removeAltAllelesIfTooManyGenotypes(ploidy, alleleMapper, mergedVC);
+                
+            //Partial recompute should start here with a while loop
+            boolean[] moreRecompute = new boolean[2];// [0]:crossbound [1]:passEmit
+            moreRecompute[0]=false;
+            moreRecompute[1]=false;
+            int[] readPT=new int[1];
+            readPT[0]=0;
+
+            boolean[] exact_only=new boolean[1];
+	        VariantContext call;
+            List<ReadLikelihoods<Allele>> readAlleleLikelihoods;
+            int redolocus=0;
+            do{
+                int [] redoSquares = new int[1];
+                readAlleleLikelihoods = readLikelihoods.get(0).marginalize(haplotypes, readLikelihoods.get(1), readLikelihoods.get(2),alleleMapper, new SimpleInterval(mergedVC).expandWithinContig(ALLELE_EXTENSION, header.getSequenceDictionary()),moreRecompute[0]||moreRecompute[1],readPT,redoSquares);//[0] lowerbound [1] upperbound [2] exact
+                //System.err.printf("Xiao: /walkers/haplotypecaller/HaplotypeCallerGenotypingEngine.java/assignGenotypeLikelihoods after marginalization\n");
+                
+	            if(moreRecompute[0]){
+                    System.err.printf("Xiao:redo total squares = %d reason = crossbound\n", redoSquares[0]);
+                    redolocus++;
+                    System.err.printf("Xiao:redolocus %d\n",redolocus );
+                } 
+                if(moreRecompute[1]){
+                    System.err.printf("Xiao:redo total squares = %d reason = passEmit\n", redoSquares[0]);
+                    redolocus++;
+                    System.err.printf("Xiao:redolocus %d\n",redolocus );
+                }
+                //System.err.printf("readPT[0]=%d exact_only=%b \n",readPT[0],exact_only[0] );
+	            if (configuration.isSampleContaminationPresent()) {
+                    System.err.print("Xiao: /walkers/haplotypecaller/HaplotypeCallerGenotypingEngine.java/assignGenotypeLikelihoods downsample encountered but not implemented\n");
+		            readAlleleLikelihoods.get(0).contaminationDownsampling(configuration.getSampleContamination());
+                }
+
+                if (emitReferenceConfidence) {
+                    mergedVC = addNonRefSymbolicAllele(mergedVC);
+                    System.err.print("Xiao: /walkers/haplotypecaller/HaplotypeCallerGenotypingEngine.java/assignGenotypeLikelihoods emitReferenceConfidence encountered but not implemented\n");
+                    readAlleleLikelihoods.get(0).addNonReferenceAllele(Allele.NON_REF_ALLELE);
+                }
+                List<Allele> bestAlleleList = new ArrayList<Allele>();
+                
+                final List<GenotypesContext> genotypes = calculateGLsForThisEvent(readAlleleLikelihoods, mergedVC, noCallAlleles,exact_only,moreRecompute,bestAlleleList);
+                //System.err.printf("Xiao: /walkers/haplotypecaller/HaplotypeCallerGenotypingEngine.java/assignGenotypeLikelihoods aftercalculateGLmoreRecompute[0]=%b exact_only=%b\n",moreRecompute[0],exact_only[0]);
+                //About genotypes:.
+                    //if exact_only, the entire result is replaced with exact results. So there is only 1 return result;
+                    //if bounds are not crossed && biallic case:            
+                    //  genotypes[0]=guaranteed pass if pass
+                    //  genotypes[1]=guaranteed fail if fail
+                    //  genotypes[2]=exact
+                    //if bounds are not crossed && multiple alleles with RA best case: 
+                    //  genotypes[0]=guarantee to pass with {RR,XR,XX}
+                    //  genotypes[1]=guarantee to pass with {XX,XA,AA}
+                    //  genotypes[2]=guarantee to fail with {RR,XR,XX}
+                    //  genotypes[3]=guarantee to fail with {XX,XA,AA}
+                    //  genotypes[4]=exact
+                    //if bounds are not crossed && multiple alleles with AB best case:
+                    //  genotypes[0]=guarantee to pass with {RR,XR,XX}
+                    //  genotypes[1]=guarantee to pass with {XX,XA,AA}
+                    //  genotypes[2]=guarantee to pass with {XX,XB,BB}
+                    //  genotypes[3]=guarantee to fail with {RR,XR,XX}
+                    //  genotypes[4]=guarantee to fail with {XX,XA,AA}
+                    //  genotypes[5]=guarantee to fail with {XX,XB,BB}
+                    //  genotypes[6]=exact
+                if(!moreRecompute[0]){
+                    List<VariantContext> vcList = new ArrayList<VariantContext>();
+                    for(int i=0; i<genotypes.size();i++){
+                        vcList.add(new VariantContextBuilder(mergedVC).genotypes(genotypes.get(i)).make());
+                    }
+                    //boolean exact_only = genotypes.size() == 1 ? true : false;
+                    //recompute_done = recompute_done || exact_only;
+                    //boolean[] recompute_done_ref=new boolean[2];
+                    call = calculateGenotypes(exact_only[0], vcList, getGLModel(mergedVC), header,readAlleleLikelihoods,moreRecompute,bestAlleleList);
+                    //recompute_done = recompute_done || recompute_done_ref[0];
+                }else{
+                    call=null;
+                }
+                //System.err.printf("Xiao: /walkers/haplotypecaller/HaplotypeCallerGenotypingEngine.java/assignGenotypeLikelihoods moreRecompute[0]=%b moreRecompute[1]=%b\n",moreRecompute[0],moreRecompute[1]);
+                if(exact_only[0]){
+                    moreRecompute[0]=false;
+                    moreRecompute[1]=false;
+                }
+            }while(moreRecompute[0]||moreRecompute[1]); 
+            if( call != null ) {
+
+                
+                readAlleleLikelihoods.set(0,prepareReadAlleleLikelihoodsForAnnotation(readLikelihoods.get(0), perSampleFilteredReadList,
+                        emitReferenceConfidence, alleleMapper, readAlleleLikelihoods.get(0), call));
+
+                final VariantContext annotatedCall = makeAnnotatedCall(ref, refLoc, tracker, header, mergedVC, readAlleleLikelihoods.get(0), call);
+                returnCalls.add( annotatedCall );
+                ////Print out for debug
+                //final VariantContext printcall = annotatedCall;
+                //System.err.printf("Xiao walkers/genotyper/GnotypingEngine.java/call!==null\n");
+                //for(int s=0;s<printcall.getGenotypes().size();s++){
+                //    for(int g=0;g<printcall.getGenotypes().get(s).getPL().length;g++){
+                //        System.err.printf("Xiao walkers/genotyper/GnotypingEngine.java/calculateGenotypes PL(%d)[%d]=%d genotype=%s\n",s,g,printcall.getGenotypes().get(s).getPL()[g],printcall.getGenotypes().get(s).getGenotypeString(false));
+                //    }
+                //}
+                ////END Print out for debug
+                if (withBamOut) {
+                    AssemblyBasedCallerUtils.annotateReadLikelihoodsWithSupportedAlleles(call, readAlleleLikelihoods.get(0));
                 }
 
                 // maintain the set of all called haplotypes
@@ -390,6 +576,7 @@ public class HaplotypeCallerGenotypingEngine extends AssemblyBasedCallerGenotypi
      * @param mergedVC               Input VC with event to genotype
      * @return                       GenotypesContext object wrapping genotype objects with PLs
      */
+    //Original Method 
     protected GenotypesContext calculateGLsForThisEvent(final ReadLikelihoods<Allele> readLikelihoods, final VariantContext mergedVC, final List<Allele> noCallAlleles ) {
         Utils.nonNull(readLikelihoods, "readLikelihoods");
         Utils.nonNull(mergedVC, "mergedVC");
@@ -401,6 +588,260 @@ public class HaplotypeCallerGenotypingEngine extends AssemblyBasedCallerGenotypi
         for (int s = 0; s < sampleCount; s++) {
             result.add(new GenotypeBuilder(samples.getSample(s)).alleles(noCallAlleles).PL(likelihoods.sampleLikelihoods(s).getAsPLs()).make());
         }
+        return result;
+    }
+    
+    
+    //Prune Method
+        //Note that the return list size can be 1 or 3 or 5 or 7. This is assuming only 1 sample
+        //if bounds are crossed, the entire result is replaced with exact results. So there is only 1 return result;
+        //if bounds are not crossed && biallic case:            
+        //  result[0]=guaranteed pass if pass
+        //  result[1]=guaranteed fail if fail
+        //  result[2]=exact
+        //if bounds are not crossed && multiple alleles with RA best case: 
+        //  result[0]=guarantee to pass with {RR,XR,XX}
+        //  result[1]=guarantee to pass with {XX,XA,AA}
+        //  result[2]=guarantee to fail with {RR,XR,XX}
+        //  result[3]=guarantee to fail with {XX,XA,AA}
+        //  result[4]=exact
+        //if bounds are not crossed && multiple alleles with AB best case:
+        //  result[0]=guarantee to pass with {RR,XR,XX}
+        //  result[1]=guarantee to pass with {XX,XA,AA}
+        //  result[2]=guarantee to pass with {XX,XB,BB}
+        //  result[3]=guarantee to fail with {RR,XR,XX}
+        //  result[4]=guarantee to fail with {XX,XA,AA}
+        //  result[5]=guarantee to fail with {XX,XB,BB}
+        //  result[6]=exact
+    //Prune Method
+    protected List<GenotypesContext> calculateGLsForThisEvent(final List<ReadLikelihoods<Allele>> readLikelihoods, final VariantContext mergedVC, final List<Allele> noCallAlleles,final boolean []exact_only, boolean [] moreRecompute, List<Allele> bestAlleleList) {
+        Utils.nonNull(readLikelihoods, "readLikelihoods");
+        Utils.nonNull(mergedVC, "mergedVC");
+        
+        final List<GenotypesContext> result = new ArrayList<GenotypesContext>();
+        
+        //if this region is already recomputed, then no need to combine bounds or examine for recompute
+        if(exact_only[0]){
+            result.add(calculateGLsForThisEvent(readLikelihoods.get(2),mergedVC,noCallAlleles));
+            return result;
+        }
+
+        final List<Allele> vcAlleles = mergedVC.getAlleles();
+        final AlleleList<Allele> alleleList = readLikelihoods.get(0).numberOfAlleles() == vcAlleles.size() ? readLikelihoods.get(0) : new IndexedAlleleList<>(vcAlleles);
+        final List<GenotypingLikelihoods<Allele>> likelihoods = genotypingModel.calculateLikelihoods(alleleList,new GenotypingData<>(ploidyModel,readLikelihoods.get(0)),new GenotypingData<>(ploidyModel,readLikelihoods.get(1)),new GenotypingData<>(ploidyModel,readLikelihoods.get(2)));//[0] lowerbound [1] upperbound [2] exact
+         
+        
+        
+        //Begin combining upper and lower bounds
+        //Print for debug:
+        //    for(int s=0;s<samples.numberOfSamples();s++){
+        //        for(int g=0;g<likelihoods.get(0).sampleLikelihoods(s).getAsVector().length;g++){
+        //            System.err.printf("likelihoods_lower[%d](%d %d)=%f \n",g,GenotypeLikelihoods.getAllelePair(g).alleleIndex1,GenotypeLikelihoods.getAllelePair(g).alleleIndex2,likelihoods.get(0).sampleLikelihoods(s).getAsVector()[g]);
+        //        }
+        //        for(int g=0;g<likelihoods.get(1).sampleLikelihoods(s).getAsVector().length;g++){
+        //            System.err.printf("likelihoods_upper[%d](%d %d)=%f\n",g,GenotypeLikelihoods.getAllelePair(g).alleleIndex1,GenotypeLikelihoods.getAllelePair(g).alleleIndex2,likelihoods.get(1).sampleLikelihoods(s).getAsVector()[g]);
+        //        }
+        //        for(int g=0;g<likelihoods.get(2).sampleLikelihoods(s).getAsVector().length;g++){
+        //            System.err.printf("likelihoods_exact[%d](%d %d)=%f\n",g,GenotypeLikelihoods.getAllelePair(g).alleleIndex1,GenotypeLikelihoods.getAllelePair(g).alleleIndex2,likelihoods.get(2).sampleLikelihoods(s).getAsVector()[g]);
+        //        }
+        //    }
+        //End print for debug
+       
+       
+        List<GenotypeLikelihoods> genotypelikelihoods_pass = new ArrayList<GenotypeLikelihoods>();
+        List<GenotypeLikelihoods> genotypelikelihoods_fail = new ArrayList<GenotypeLikelihoods>();
+        boolean cross_bound = false;
+        int s=0;//only support single sample for now
+
+        //identify most likely genotype in lowerbound first:
+        double [] lowerboundValues = likelihoods.get(0).sampleLikelihoods(s).getAsVector();
+        double maxGL = lowerboundValues[0];
+        int maxGL_index = 0;
+        for(int g=0; g<lowerboundValues.length;g++){
+            if(lowerboundValues[g]>maxGL){
+                maxGL = lowerboundValues[g];
+                maxGL_index = g;
+            }
+        }
+
+        //make sure upperbound of the nonmax likelihoods are lower than maxGL
+        double [] upperboundValues = likelihoods.get(1).sampleLikelihoods(s).getAsVector();
+        for(int g=0;g<upperboundValues.length;g++){
+            if(upperboundValues[g] > maxGL && g!=maxGL_index){
+                cross_bound = true;
+                //System.err.printf("Xiao:from tools/walkers/haplotypecaller/HaplotypeCallerGenotypingENgine.java/calculateGLsForThisEvent maxGL=%f maxGL_index=%d upperbound=%f\n",maxGL,maxGL_index,likelihoods.get(1).sampleLikelihoods(s).getAsVector()[g] );
+            }
+        }
+        
+        moreRecompute[0]=cross_bound;
+        if(cross_bound){
+            final GenotypesContext resultN = GenotypesContext.create(samples.numberOfSamples());
+            resultN.add(new GenotypeBuilder(samples.getSample(0)).alleles(noCallAlleles).PL(likelihoods.get(0).sampleLikelihoods(0).getAsPLs()).make());
+            result.add(resultN); 
+            return result;
+        }
+        
+        //find out allele pair corresponding to maxGL_index
+        boolean bestAlleleAB = false;
+        int [] bestAllelePairIndex=new int[2];
+        GenotypeLikelihoods.getAllelePair(maxGL_index);
+        bestAllelePairIndex[0] = GenotypeLikelihoods.getAllelePair(maxGL_index).alleleIndex1;
+        bestAllelePairIndex[1] = GenotypeLikelihoods.getAllelePair(maxGL_index).alleleIndex2;
+        //System.err.printf("exact_only=%b maxGL_index=%d alleleindex1=%d alleleindex2=%d\n",exact_only[0],maxGL_index,bestAllelePairIndex[0],bestAllelePairIndex[1]);
+        bestAlleleList.add(vcAlleles.get(bestAllelePairIndex[0]));
+        bestAlleleList.add(vcAlleles.get(bestAllelePairIndex[1]));
+        //produce guaranteed pass if pass and guaranteed fail if fail likelihoods
+        //biallelic case
+        if(likelihoods.get(0).numberOfAlleles()==2){
+            double [] log10Likelihoods_pass = likelihoods.get(0).sampleLikelihoods(s).getAsVector().clone();//lowerbound
+            double [] log10Likelihoods_fail = likelihoods.get(1).sampleLikelihoods(s).getAsVector().clone();//upperbound
+            double RR_lower = log10Likelihoods_pass[0];
+            double RR_upper = log10Likelihoods_fail[0];
+            log10Likelihoods_pass[0] = RR_upper;
+            log10Likelihoods_fail[0] = RR_lower;
+            genotypelikelihoods_pass.add(GenotypeLikelihoods.fromLog10Likelihoods(log10Likelihoods_pass));
+            genotypelikelihoods_fail.add(GenotypeLikelihoods.fromLog10Likelihoods(log10Likelihoods_fail));
+            //System.err.printf("Xiao:from tools/walkers/haplotypecaller/HaplotypeCallerGenotypingENgine.java/calculateGLsForThisEvent: biallelic case\n" );
+        }
+        //multiple allele case
+        else{
+            //RA case
+            int BestaltAlleleIndex = bestAllelePairIndex[0]>0 ? bestAllelePairIndex[0] : bestAllelePairIndex[1];
+            //handle passEmit criteria(1) {RR,RX,XX}
+            double [] log10Likelihoods_pass = likelihoods.get(0).sampleLikelihoods(s).getAsVector().clone();//lowerbound
+            double [] log10Likelihoods_fail = likelihoods.get(1).sampleLikelihoods(s).getAsVector().clone();//upperbound
+            double RR_lower = log10Likelihoods_pass[0];
+            double RR_upper = log10Likelihoods_fail[0];
+            log10Likelihoods_pass[0] = RR_upper;
+            log10Likelihoods_fail[0] = RR_lower;
+            genotypelikelihoods_pass.add(GenotypeLikelihoods.fromLog10Likelihoods(log10Likelihoods_pass));
+            genotypelikelihoods_fail.add(GenotypeLikelihoods.fromLog10Likelihoods(log10Likelihoods_fail));
+            
+            //handle passEmit criteria(2.1) {XX,XA,AA}
+            log10Likelihoods_pass = likelihoods.get(0).sampleLikelihoods(s).getAsVector().clone();//lowerbound
+            log10Likelihoods_fail = likelihoods.get(1).sampleLikelihoods(s).getAsVector().clone();//upperbound
+            for(int g=0; g<likelihoods.get(0).sampleLikelihoods(s).getAsVector().length;g++ ){
+                int [] allelePairIndex = new int[2];
+                allelePairIndex[0]= GenotypeLikelihoods.getAllelePair(g).alleleIndex1;
+                allelePairIndex[1]= GenotypeLikelihoods.getAllelePair(g).alleleIndex2;
+                if(allelePairIndex[0]!=BestaltAlleleIndex && allelePairIndex[1]!=BestaltAlleleIndex){
+                    double XX_upper = log10Likelihoods_fail[g];
+                    double XX_lower = log10Likelihoods_pass[g];
+                    log10Likelihoods_pass[g] = XX_upper;
+                    log10Likelihoods_fail[g] = XX_lower;
+                }
+            }
+            genotypelikelihoods_pass.add(GenotypeLikelihoods.fromLog10Likelihoods(log10Likelihoods_pass));
+            genotypelikelihoods_fail.add(GenotypeLikelihoods.fromLog10Likelihoods(log10Likelihoods_fail));
+            //System.err.printf("Xiao:from tools/walkers/haplotypecaller/HaplotypeCallerGenotypingENgine.java/calculateGLsForThisEvent:multi allele case with RA\n" );
+            //AB case
+            if( bestAllelePairIndex[0]>0 && bestAllelePairIndex[1]>0 && bestAllelePairIndex[0]!=bestAllelePairIndex[1] ){
+                //handle passEmit criteria(2.2) {XX,XB,BB}
+                int SecondBestAlleleIndex = bestAllelePairIndex[1];
+                log10Likelihoods_pass = likelihoods.get(0).sampleLikelihoods(s).getAsVector().clone();//lowerbound
+                log10Likelihoods_fail = likelihoods.get(1).sampleLikelihoods(s).getAsVector().clone();//upperbound
+                for(int g=0; g<likelihoods.get(0).sampleLikelihoods(s).getAsVector().length;g++ ){
+                    int [] allelePairIndex = new int[2];
+                    allelePairIndex[0]= GenotypeLikelihoods.getAllelePair(g).alleleIndex1;
+                    allelePairIndex[1]= GenotypeLikelihoods.getAllelePair(g).alleleIndex2;
+                    if(allelePairIndex[0]!=SecondBestAlleleIndex && allelePairIndex[1]!=SecondBestAlleleIndex){
+                        double XX_upper = log10Likelihoods_fail[g];
+                        double XX_lower = log10Likelihoods_pass[g];
+                        log10Likelihoods_pass[g] = XX_upper;
+                        log10Likelihoods_fail[g] = XX_lower;
+                    }
+                }
+                genotypelikelihoods_pass.add(GenotypeLikelihoods.fromLog10Likelihoods(log10Likelihoods_pass));
+                genotypelikelihoods_fail.add(GenotypeLikelihoods.fromLog10Likelihoods(log10Likelihoods_fail));
+                //System.err.printf("Xiao:from tools/walkers/haplotypecaller/HaplotypeCallerGenotypingENgine.java/calculateGLsForThisEvent:multi allele case with AB\n" );
+            }
+        }
+        
+        
+        //Note that the return list size can be 1 or 3 or 5 or 7. This is assuming only 1 sample
+        //if bounds are crossed, the entire result is replaced with exact results. So there is only 1 return result;
+        //if bounds are not crossed && biallic case:            
+        //  result[0]=guaranteed pass if pass
+        //  result[1]=guaranteed fail if fail
+        //  result[2]=exact
+        //if bounds are not crossed && multiple alleles with RA or AA best case: 
+        //  result[0]=guarantee to pass with {RR,XR,XX}
+        //  result[1]=guarantee to pass with {XX,XA,AA}
+        //  result[2]=guarantee to fail with {RR,XR,XX}
+        //  result[3]=guarantee to fail with {XX,XA,AA}
+        //  result[4]=exact
+        //if bounds are not crossed && multiple alleles with AB best case:
+        //  result[0]=guarantee to pass with {RR,XR,XX}
+        //  result[1]=guarantee to pass with {XX,XA,AA}
+        //  result[2]=guarantee to pass with {XX,XB,BB}
+        //  result[3]=guarantee to fail with {RR,XR,XX}
+        //  result[4]=guarantee to fail with {XX,XA,AA}
+        //  result[5]=guarantee to fail with {XX,XB,BB}
+        //  result[6]=exact
+        //final int sampleCount = samples.numberOfSamples();
+        final int sampleCount = 1;
+        exact_only[0]=true;
+        for(int i=0; i<genotypelikelihoods_pass.size();i++){
+            for(int g=0;g<genotypelikelihoods_pass.get(i).getAsVector().length;g++){
+                if(genotypelikelihoods_pass.get(i).getAsVector()[g]!=genotypelikelihoods_fail.get(i).getAsVector()[g]){
+                    exact_only[0]=false;
+                } 
+               
+            }
+        }
+        if(!cross_bound){
+            for(int i=0; i<genotypelikelihoods_pass.size();i++){
+                //for(int g=0;g<genotypelikelihoods_pass.get(i).getAsVector().length;g++){
+                    //System.err.printf("Xiao:tools/walkers/haplotypecaller/HaplotypeCallerGenotypingENgine.java/calculateGLsForThisEvent: likelihood set pass %d: likelihood[%d]=%f\n",i,g,genotypelikelihoods_pass.get(i).getAsVector()[g]);
+                //} 
+                final GenotypesContext result_pass = GenotypesContext.create(sampleCount);
+                result_pass.add(new GenotypeBuilder(samples.getSample(s)).alleles(noCallAlleles).PL(genotypelikelihoods_pass.get(i).getAsPLs()).make());
+                result.add(result_pass);
+            }
+            for(int i=0; i<genotypelikelihoods_fail.size();i++){
+                //for(int g=0;g<genotypelikelihoods_fail.get(i).getAsVector().length;g++){
+                    //System.err.printf("Xiao:tools/walkers/haplotypecaller/HaplotypeCallerGenotypingENgine.java/calculateGLsForThisEvent: likelihood set fail %d: likelihood[%d]=%f\n",i,g,genotypelikelihoods_fail.get(i).getAsVector()[g]);
+                    
+                //} 
+                final GenotypesContext result_fail = GenotypesContext.create(sampleCount);
+                result_fail.add(new GenotypeBuilder(samples.getSample(s)).alleles(noCallAlleles).PL(genotypelikelihoods_fail.get(i).getAsPLs()).make());
+                result.add(result_fail);
+            }
+            //check for exact only
+            //ArrayList<Genotype> passList=new ArrayList<Genotype>();
+            //ArrayList<Genotype> failList=new ArrayList<Genotype>();
+            //Iterator<Genotype> it=result.get(0).iterator();
+            //while(it.hasNext()){
+            //    passList.add(it.next());
+            //}
+            //it=result.get(1).iterator();
+            //while(it.hasNext()){
+            //    failList.add(it.next());
+            //}
+            //exact_only[0]=true;
+            //for(int i=0; i<passList.size();i++){
+            //    for(int g=0;g<passList.get(i).getPL().length;g++){
+            //        System.err.printf("pass[%d][%d]=%d fail=%d\n",i,g,passList.get(i).getPL()[g],failList.get(i).getPL()[g]);
+            //        if(passList.get(i).getPL()[g]!=failList.get(i).getPL()[g]){
+            //            exact_only[0]=false;
+            //        }
+            //    }
+            //}
+            //System.err.printf("exact_only=%b\n",exact_only[0]);
+            ////Print for debug
+            //for(int g=0;g<passList.get(0).getPL().length;g++){
+            //    System.err.printf("result_pass[%d]=%d\n",g,passList.get(0).getPL()[g]);
+            //}
+            //for(int g=0;g<failList.get(0).getPL().length;g++){
+            //    System.err.printf("result_fail[%d]=%d\n",g,failList.get(0).getPL()[g]);
+            //}
+            ////end print for debug
+        
+        }
+        final GenotypesContext result_exact = GenotypesContext.create(sampleCount);
+        result_exact.add(new GenotypeBuilder(samples.getSample(0)).alleles(noCallAlleles).PL(likelihoods.get(2).sampleLikelihoods(s).getAsPLs()).make());
+        
+        result.add(result_exact);
         return result;
     }
 

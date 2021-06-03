@@ -165,8 +165,32 @@ public final class PairHMMLikelihoodCalculationEngine implements ReadLikelihoodC
         pairHMM.close();
     }
 
+    ////Original Method
+    //@Override
+    //public ReadLikelihoods<Haplotype> computeReadLikelihoods( final AssemblyResultSet assemblyResultSet, final SampleList samples, final Map<String, List<GATKRead>> perSampleReadList ) {
+    //    Utils.nonNull(assemblyResultSet, "assemblyResultSet is null");
+    //    Utils.nonNull(samples, "samples is null");
+    //    Utils.nonNull(perSampleReadList, "perSampleReadList is null");
+
+    //    final List<Haplotype> haplotypeList = assemblyResultSet.getHaplotypeList();
+    //    final AlleleList<Haplotype> haplotypes = new IndexedAlleleList<>(haplotypeList);
+
+    //    initializePairHMM(haplotypeList, perSampleReadList);
+
+    //    // Add likelihoods for each sample's reads to our result
+    //    final ReadLikelihoods<Haplotype> result = new ReadLikelihoods<>(samples, haplotypes, perSampleReadList);
+    //    final int sampleCount = result.numberOfSamples();
+    //    for (int i = 0; i < sampleCount; i++) {
+    //        computeReadLikelihoods(result.sampleMatrix(i));
+    //    }
+
+    //    result.normalizeLikelihoods(log10globalReadMismappingRate);
+    //    result.filterPoorlyModeledReads(EXPECTED_ERROR_RATE_PER_BASE);
+    //    return result;
+    //}
+    //Prune Method
     @Override
-    public ReadLikelihoods<Haplotype> computeReadLikelihoods( final AssemblyResultSet assemblyResultSet, final SampleList samples, final Map<String, List<GATKRead>> perSampleReadList ) {
+    public List<ReadLikelihoods<Haplotype>> computeReadLikelihoods( final AssemblyResultSet assemblyResultSet, final SampleList samples, final Map<String, List<GATKRead>> perSampleReadList ) {
         Utils.nonNull(assemblyResultSet, "assemblyResultSet is null");
         Utils.nonNull(samples, "samples is null");
         Utils.nonNull(perSampleReadList, "perSampleReadList is null");
@@ -177,14 +201,45 @@ public final class PairHMMLikelihoodCalculationEngine implements ReadLikelihoodC
         initializePairHMM(haplotypeList, perSampleReadList);
 
         // Add likelihoods for each sample's reads to our result
-        final ReadLikelihoods<Haplotype> result = new ReadLikelihoods<>(samples, haplotypes, perSampleReadList);
-        final int sampleCount = result.numberOfSamples();
+        final ReadLikelihoods<Haplotype> result_lowerbound = new ReadLikelihoods<>(samples, haplotypes, perSampleReadList);
+        final ReadLikelihoods<Haplotype> result_upperbound = new ReadLikelihoods<>(samples, haplotypes, perSampleReadList);
+        final ReadLikelihoods<Haplotype> result_exact = new ReadLikelihoods<>(samples, haplotypes, perSampleReadList);
+        final int sampleCount = result_lowerbound.numberOfSamples();
         for (int i = 0; i < sampleCount; i++) {
-            computeReadLikelihoods(result.sampleMatrix(i));
+            computeReadLikelihoods(result_lowerbound.sampleMatrix(i),result_upperbound.sampleMatrix(i),result_exact.sampleMatrix(i));
         }
+        	
+    	//For debug: after HMM
+        //System.err.print("Xiao:walker/haplotypecaller/PairHMMLikelihoodCalculationEngin/computeReadLikelihoods: right after HMM\n");
+        //result_lowerbound.printlikelihoods();
+        //result_upperbound.printlikelihoods();
+	    //Need to look into more. This cap the maximum difference between best haplotype and reference
+        result_lowerbound.normalizeLikelihoods(log10globalReadMismappingRate);
+        result_upperbound.normalizeLikelihoods(log10globalReadMismappingRate);
+        result_exact.normalizeLikelihoods(log10globalReadMismappingRate);
+    	//For debug: after cap diff
+        //System.err.print("Xiao:walker/haplotypecaller/PairHMMLikelihoodCalculationEngin/computeReadLikelihoods: right after cap diff\n");
+        //result_lowerbound.printlikelihoods();
+        //result_upperbound.printlikelihoods();
 
-        result.normalizeLikelihoods(log10globalReadMismappingRate);
-        result.filterPoorlyModeledReads(EXPECTED_ERROR_RATE_PER_BASE);
+        result_lowerbound.filterPoorlyModeledReads(EXPECTED_ERROR_RATE_PER_BASE, result_upperbound,result_exact);
+    	//For debug: after filter
+        //System.err.print("Xiao:walker/haplotypecaller/PairHMMLikelihoodCalculationEngin/computeReadLikelihoods: right after filter poor reads\n");
+        //result_lowerbound.printlikelihoods();
+        //result_upperbound.printlikelihoods();
+        //int job_tot = 0;
+        //for(int i=0;i<sampleCount;i++){
+        //    for(int g=0; g<result_lowerbound.sampleMatrix(i).alleles().size();g++){
+        //        for(int r=0;r<result_lowerbound.sampleMatrix(i).reads().size();r++){
+        //            job_tot+=result_lowerbound.sampleMatrix(i).alleles().get(g).getBases().length * result_lowerbound.sampleMatrix(i).reads().get(r).getLength();
+        //        }
+        //    }
+        //}    
+        //System.err.printf("Xiao:walker/haplotypecaller/PairHMMLikelihoodCalculationEngin/computeReadLikelihoods: HMM workload =%d \n",job_tot);
+        List<ReadLikelihoods<Haplotype>> result = new ArrayList<ReadLikelihoods<Haplotype>>();
+        result.add(result_lowerbound);
+        result.add(result_upperbound);
+        result.add(result_exact);
         return result;
     }
 
@@ -241,17 +296,32 @@ public final class PairHMMLikelihoodCalculationEngine implements ReadLikelihoodC
         // initialize arrays to hold the probabilities of being in the match, insertion and deletion cases
         pairHMM.initialize(haplotypes, perSampleReadList, readMaxLength, haplotypeMaxLength);
     }
+    ////Original Method
+    //private void computeReadLikelihoods(final LikelihoodMatrix<Haplotype> likelihoods) {
+    //    // Modify the read qualities by applying the PCR error model and capping the minimum base,insertion,deletion qualities
+    //    final List<GATKRead> processedReads = modifyReadQualities(likelihoods.reads());
 
-    private void computeReadLikelihoods(final LikelihoodMatrix<Haplotype> likelihoods) {
+    //    final Map<GATKRead, byte[]> gapContinuationPenalties = buildGapContinuationPenalties(processedReads, constantGCP);
+
+    //    // Run the PairHMM to calculate the log10 likelihood of each (processed) reads' arising from each haplotype
+    //    pairHMM.computeLog10Likelihoods(likelihoods, processedReads, gapContinuationPenalties);
+
+    //    writeDebugLikelihoods(likelihoods);
+    //}
+
+    //Prune Method
+    private void computeReadLikelihoods(final LikelihoodMatrix<Haplotype> likelihoods_lowerbound,final LikelihoodMatrix<Haplotype> likelihoods_upperbound,final LikelihoodMatrix<Haplotype> likelihoods_exact) {
         // Modify the read qualities by applying the PCR error model and capping the minimum base,insertion,deletion qualities
-        final List<GATKRead> processedReads = modifyReadQualities(likelihoods.reads());
+        final List<GATKRead> processedReads = modifyReadQualities(likelihoods_lowerbound.reads());
+
 
         final Map<GATKRead, byte[]> gapContinuationPenalties = buildGapContinuationPenalties(processedReads, constantGCP);
 
         // Run the PairHMM to calculate the log10 likelihood of each (processed) reads' arising from each haplotype
-        pairHMM.computeLog10Likelihoods(likelihoods, processedReads, gapContinuationPenalties);
+        pairHMM.computeLog10Likelihoods(likelihoods_lowerbound,likelihoods_upperbound,likelihoods_exact, processedReads, gapContinuationPenalties);
 
-        writeDebugLikelihoods(likelihoods);
+        //pairHMM.close();//write out profiling time
+        writeDebugLikelihoods(likelihoods_lowerbound);
     }
 
     /**

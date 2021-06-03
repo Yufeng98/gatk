@@ -39,9 +39,11 @@ public interface ReadLikelihoodCalculationEngine extends AutoCloseable {
      * @return never {@code null}, and with at least one entry for input sample (keys in {@code perSampleReadList}.
      *    The value maps can be potentially empty though.
      */
-    public ReadLikelihoods<Haplotype> computeReadLikelihoods(AssemblyResultSet assemblyResultSet, SampleList samples,
-                                                             Map<String, List<GATKRead>> perSampleReadList);
+    //public ReadLikelihoods<Haplotype> computeReadLikelihoods(AssemblyResultSet assemblyResultSet, SampleList samples,
+    //                                                         Map<String, List<GATKRead>> perSampleReadList);
 
+    public List<ReadLikelihoods<Haplotype>> computeReadLikelihoods(AssemblyResultSet assemblyResultSet, SampleList samples,
+                                                             Map<String, List<GATKRead>> perSampleReadList);
     /**
      * This method must be called when the client is done with likelihood calculations.
      * It closes any open resources.

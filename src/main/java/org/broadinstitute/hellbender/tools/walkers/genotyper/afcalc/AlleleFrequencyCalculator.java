@@ -42,6 +42,7 @@ public final class AlleleFrequencyCalculator extends AFCalculator {
 
     public AFCalculationResult getLog10PNonRef(final VariantContext vc) {
         // maxAltAlleles is not used by getLog10PNonRef, so don't worry about the 0
+        System.err.print("Xiao: call getLog10PNonRef from walker/genotyper/afcalc/AlleleFrequencyCalculator.java\n");
         return getLog10PNonRef(vc, defaultPloidy, 0, null);
     }
     //TODO: this should be a class of static methods once the old AFCalculator is gone.
@@ -56,6 +57,7 @@ public final class AlleleFrequencyCalculator extends AFCalculator {
      */
     @Override
     public AFCalculationResult getLog10PNonRef(final VariantContext vc, final int defaultPloidy, final int maximumAlternativeAlleles, final double[] refSnpIndelPseudocounts) {
+        System.err.print("Xiao:call getLog10PNonRef from walkers/genotyper/afcalc/AlleleFrequencyCalculator.java\n");
         Utils.nonNull(vc, "VariantContext cannot be null");
         final int numAlleles = vc.getNAlleles();
         final List<Allele> alleles = vc.getAlleles();

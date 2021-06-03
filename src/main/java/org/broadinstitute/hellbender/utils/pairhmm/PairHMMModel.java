@@ -1,3 +1,4 @@
+
 package org.broadinstitute.hellbender.utils.pairhmm;
 
 import org.broadinstitute.hellbender.utils.MathUtils;
@@ -53,22 +54,22 @@ public final class PairHMMModel {
     /**
       * Convenient ln10 constant.
       */
-    private static final double LN10 = Math.log(10);
+    private static final float LN10 = (float)Math.log(10);
 
     /**
       * Convenient (ln10)^-1 constant.
       */
-     private static final double INV_LN10 = 1.0 / LN10;
+     private static final float INV_LN10 = (float)1.0 / LN10;
 
     /**
-     * Holds pre-calculated the matchToMath probability values in linear scale.
+     * Holds pre-calculated the matchTo(float)Math probability values in linear scale.
      *
      * <p/>
      * This is a triangular matrix stored in a unidimentional array like so:
      * <p/>
      * (0,0), (0,1), (1,1), (0,2), (1,2), (2,2), (0,3) ... ({@link QualityUtils#MAX_QUAL},{@link QualityUtils#MAX_QUAL})
      */
-    private static final double[] matchToMatchProb = new double[((QualityUtils.MAX_QUAL + 1) * (QualityUtils.MAX_QUAL + 2)) >> 1];
+    private static final float[] matchToMatchProb = new float[((QualityUtils.MAX_QUAL + 1) * (QualityUtils.MAX_QUAL + 2)) >> 1];
 
     /**
      * Holds pre-calculated the matchToMatch log10-probabilities.
@@ -78,7 +79,7 @@ public final class PairHMMModel {
      * <p/>
      * (0,0), (0,1), (1,1), (0,2), (1,2), (2,2), (0,3) ... ({@link QualityUtils#MAX_QUAL},{@link QualityUtils#MAX_QUAL})
      */
-    private static final double[] matchToMatchLog10 = new double[((QualityUtils.MAX_QUAL + 1) * (QualityUtils.MAX_QUAL + 2)) >> 1];
+    private static final float[] matchToMatchLog10 = new float[((QualityUtils.MAX_QUAL + 1) * (QualityUtils.MAX_QUAL + 2)) >> 1];
 
     /**
      * Initialize matchToMatch cache tables {@link #matchToMatch} and {@link #matchToMatchLog}
@@ -86,10 +87,10 @@ public final class PairHMMModel {
     static {
         for (int i = 0, offset = 0; i <= QualityUtils.MAX_QUAL; offset += ++i)
             for (int j = 0; j <= i; j++) {
-                final double log10Sum = MathUtils.approximateLog10SumLog10(-0.1 * i, -0.1 * j);
+                final float log10Sum = (float)MathUtils.approximateLog10SumLog10(-0.1 * i, -0.1 * j);
                 matchToMatchLog10[offset + j] =
-                        Math.log1p(-Math.min(1, Math.pow(10, log10Sum))) * INV_LN10;
-                matchToMatchProb[offset + j] = Math.pow(10, matchToMatchLog10[offset + j]);
+                        (float)Math.log1p(-Math.min(1, (float)Math.pow(10, log10Sum))) * INV_LN10;
+                matchToMatchProb[offset + j] = (float)Math.pow(10, matchToMatchLog10[offset + j]);
             }
     }
 
@@ -104,16 +105,16 @@ public final class PairHMMModel {
      * @throws ArrayIndexOutOfBoundsException if {@code dest} is not large enough.
      * @throws IllegalArgumentException if {@code insQual}, {@code delQual} or {@code gcp} is less than negative.
      */
-    public static void qualToTransProbs(final double[] dest, final byte insQual, final byte delQual, final byte gcp) {
+    public static void qualToTransProbs(final float[] dest, final byte insQual, final byte delQual, final byte gcp) {
         Utils.nonNull(dest, "dest array null");
         if (insQual < 0) throw new IllegalArgumentException("insert quality cannot less than 0: " + insQual);
         if (delQual < 0) throw new IllegalArgumentException("deletion quality cannot be less than 0: " + delQual);
         if (gcp < 0) throw new IllegalArgumentException("gcp cannot be less than 0: " + gcp);
         dest[matchToMatch] = matchToMatchProb(insQual, delQual);
-        dest[matchToInsertion] = QualityUtils.qualToErrorProb(insQual);
-        dest[matchToDeletion] = QualityUtils.qualToErrorProb(delQual);
-        dest[indelToMatch] = QualityUtils.qualToProb(gcp);
-        dest[insertionToInsertion] = dest[deletionToDeletion] = QualityUtils.qualToErrorProb(gcp);
+        dest[matchToInsertion] = (float)QualityUtils.qualToErrorProb(insQual);
+        dest[matchToDeletion] = (float)QualityUtils.qualToErrorProb(delQual);
+        dest[indelToMatch] = (float)QualityUtils.qualToProb(gcp);
+        dest[insertionToInsertion] = dest[deletionToDeletion] = (float)QualityUtils.qualToErrorProb(gcp);
     }
 
     /**
@@ -129,8 +130,8 @@ public final class PairHMMModel {
      *
      * @return never {@code null}. An array of length {@link #TRANS_PROB_ARRAY_LENGTH}.
      */
-    public static double[] qualToTransProbs(final byte insQual, final byte delQual, final byte gcp) {
-        final double[] dest = new double[TRANS_PROB_ARRAY_LENGTH];
+    public static float[] qualToTransProbs(final byte insQual, final byte delQual, final byte gcp) {
+        final float[] dest = new float[TRANS_PROB_ARRAY_LENGTH];
         qualToTransProbs(dest,insQual,delQual,gcp);
         return dest;
     }
@@ -155,7 +156,7 @@ public final class PairHMMModel {
      * @throws ArrayIndexOutOfBoundsException if {@code dest} or any of its elements is not large enough to contain the
      *  transition  matrix.
      */
-    public static void qualToTransProbs(final double[][] dest, final byte[] insQuals, final byte[] delQuals, final byte[] gcps) {
+    public static void qualToTransProbs(final float[][] dest, final byte[] insQuals, final byte[] delQuals, final byte[] gcps) {
         Utils.nonNull(dest,     "dest array null");
         Utils.nonNull(insQuals, "insQuals array null");
         Utils.nonNull(delQuals, "delQuals array null");
@@ -190,12 +191,12 @@ public final class PairHMMModel {
      *
      * @return never {@code null}, an matrix of the dimensions explained above.
      */
-    public static double[][] qualToTransProbs(final byte[] insQuals, final byte[] delQuals, final byte[] gcps) {
+    public static float[][] qualToTransProbs(final byte[] insQuals, final byte[] delQuals, final byte[] gcps) {
         Utils.nonNull(insQuals, "insQuals array null");
         Utils.nonNull(delQuals, "delQuals array null");
         Utils.nonNull(gcps,     "gcps array null");
 
-        final double[][] dest = createTransitionMatrix(insQuals.length);
+        final float[][] dest = createTransitionMatrix(insQuals.length);
         qualToTransProbs(dest,insQuals,delQuals,gcps);
         return dest;
     }
@@ -211,17 +212,17 @@ public final class PairHMMModel {
      * @throws ArrayIndexOutOfBoundsException if {@code dest} is not large enough.
      * @throws IllegalArgumentException if {@code insQual}, {@code delQual} or {@code gcp} is less than negative.
      */
-    public static void qualToTransProbsLog10(final double[] dest, final byte insQual, final byte delQual, final byte gcp) {
+    public static void qualToTransProbsLog10(final float[] dest, final byte insQual, final byte delQual, final byte gcp) {
         Utils.nonNull(dest, "dest array null");
         if (insQual < 0) throw new IllegalArgumentException("insert quality cannot less than 0: " + insQual);
         if (delQual < 0) throw new IllegalArgumentException("deletion quality cannot be less than 0: " + delQual);
         if (gcp < 0) throw new IllegalArgumentException("gcp cannot be less than 0: " + gcp);
         dest[matchToMatch] = matchToMatchProbLog10(insQual, delQual);
-        dest[matchToInsertion] = QualityUtils.qualToErrorProbLog10(insQual);
-        dest[matchToDeletion] = QualityUtils.qualToErrorProbLog10(delQual);
-        dest[indelToMatch] = QualityUtils.qualToProbLog10(gcp);
-        dest[insertionToInsertion] = QualityUtils.qualToErrorProbLog10(gcp);
-        dest[deletionToDeletion] = QualityUtils.qualToErrorProbLog10(gcp);
+        dest[matchToInsertion] = (float)QualityUtils.qualToErrorProbLog10(insQual);
+        dest[matchToDeletion] = (float)QualityUtils.qualToErrorProbLog10(delQual);
+        dest[indelToMatch] = (float)QualityUtils.qualToProbLog10(gcp);
+        dest[insertionToInsertion] = (float)QualityUtils.qualToErrorProbLog10(gcp);
+        dest[deletionToDeletion] = (float)QualityUtils.qualToErrorProbLog10(gcp);
     }
 
     /**
@@ -237,8 +238,8 @@ public final class PairHMMModel {
      *
      * @return never {@code null}. An array of length {@link #TRANS_PROB_ARRAY_LENGTH}.
      */
-    public static double[] qualToTransProbsLog10(final byte insQual, final byte delQual, final byte gcp) {
-        final double[] dest = new double[TRANS_PROB_ARRAY_LENGTH];
+    public static float[] qualToTransProbsLog10(final byte insQual, final byte delQual, final byte gcp) {
+        final float[] dest = new float[TRANS_PROB_ARRAY_LENGTH];
         qualToTransProbsLog10(dest, insQual, delQual, gcp);
         return dest;
     }
@@ -262,7 +263,7 @@ public final class PairHMMModel {
      * @throws ArrayIndexOutOfBoundsException if {@code dest} or any of its elements is not large enough to contain the
      *  transition  matrix.
      */
-    public static void qualToTransProbsLog10(final double[][] dest, final byte[] insQuals, final byte[] delQuals, final byte[] gcps) {
+    public static void qualToTransProbsLog10(final float[][] dest, final byte[] insQuals, final byte[] delQuals, final byte[] gcps) {
         Utils.nonNull(dest,     "dest array null");
         Utils.nonNull(insQuals, "insQuals array null");
         Utils.nonNull(delQuals, "delQuals array null");
@@ -297,12 +298,12 @@ public final class PairHMMModel {
      *
      * @return never {@code null}, an matrix of the dimensions explained above.
      */
-    public static double[][] qualToTransProbsLog10(final byte[] insQuals, final byte[] delQuals, final byte[] gcps) {
+    public static float[][] qualToTransProbsLog10(final byte[] insQuals, final byte[] delQuals, final byte[] gcps) {
         Utils.nonNull(insQuals, "insQuals array null");
         Utils.nonNull(delQuals, "delQuals array null");
         Utils.nonNull(gcps,     "gcps array null");
 
-        final double[][] dest = createTransitionMatrix(insQuals.length);
+        final float[][] dest = createTransitionMatrix(insQuals.length);
         qualToTransProbsLog10(dest,insQuals,delQuals,gcps);
         return dest;
     }
@@ -314,8 +315,8 @@ public final class PairHMMModel {
      *
      * @return never {@code null}. A matrix of {@code maxReadLength + 1} by {@link #TRANS_PROB_ARRAY_LENGTH} positions.
      */
-    public static double[][] createTransitionMatrix(final int maxReadLength) {
-        return new double[maxReadLength + 1][TRANS_PROB_ARRAY_LENGTH];
+    public static float[][] createTransitionMatrix(final int maxReadLength) {
+        return new float[maxReadLength + 1][TRANS_PROB_ARRAY_LENGTH];
     }
 
     /**
@@ -335,7 +336,7 @@ public final class PairHMMModel {
      *
      * @return a value between 0 and 1.
      */
-    public static double matchToMatchProb(final byte insQual, final byte delQual) {
+    public static float matchToMatchProb(final byte insQual, final byte delQual) {
         return matchToMatchProb((insQual & 0xFF), (delQual & 0xFF));
     }
 
@@ -352,7 +353,7 @@ public final class PairHMMModel {
      *
      * @return a value between 0 and -Inf.
      */
-    public static double matchToMatchProbLog10(final byte insQual, final byte delQual) {
+    public static float matchToMatchProbLog10(final byte insQual, final byte delQual) {
         return matchToMatchProbLog10((insQual & 0xFF), (delQual & 0xFF));
     }
 
@@ -370,7 +371,7 @@ public final class PairHMMModel {
      * @param delQual PhRED scaled quality/probability of a deletion.
      * @return a value between 0 and 1.
      */
-    public static double matchToMatchProb(final int insQual, final int delQual) {
+    public static float matchToMatchProb(final int insQual, final int delQual) {
         final int minQual;
         final int maxQual;
         if (insQual <= delQual) {
@@ -383,8 +384,8 @@ public final class PairHMMModel {
 
         if (minQual < 0) throw new IllegalArgumentException("quality cannot be negative: " + minQual + " and " + maxQual);
 
-        return (QualityUtils.MAX_QUAL < maxQual) ?  1.0 - Math.pow(10, MathUtils.approximateLog10SumLog10(-0.1 * minQual, -0.1 * maxQual)) :
-                matchToMatchProb[((maxQual * (maxQual + 1)) >> 1) + minQual];
+        return (float)((QualityUtils.MAX_QUAL < maxQual) ?  1.0 - (float)Math.pow(10, (float)MathUtils.approximateLog10SumLog10(-0.1 * minQual, -0.1 * maxQual)) :
+                matchToMatchProb[((maxQual * (maxQual + 1)) >> 1) + minQual]);
     }
 
     /**
@@ -401,7 +402,7 @@ public final class PairHMMModel {
      *
      * @return a value between 0 and -Inf.
      */
-    public static double matchToMatchProbLog10(final int insQual, final int delQual) {
+    public static float matchToMatchProbLog10(final int insQual, final int delQual) {
         final int minQual;
         final int maxQual;
         if (insQual <= delQual) {
@@ -411,9 +412,9 @@ public final class PairHMMModel {
             minQual = delQual;
             maxQual = insQual;
         }
-        return (QualityUtils.MAX_QUAL < maxQual) ? Math.log1p (
-                -Math.min(1, Math.pow(10,
-                        MathUtils.approximateLog10SumLog10(-.1 * minQual, -.1 * maxQual)))) * INV_LN10 :
+        return (QualityUtils.MAX_QUAL < maxQual) ? (float)Math.log1p (
+                -Math.min(1, (float)Math.pow(10,
+                        (float)MathUtils.approximateLog10SumLog10(-.1 * minQual, -.1 * maxQual)))) * INV_LN10 :
                 matchToMatchLog10[((maxQual * (maxQual + 1)) >> 1) + minQual];
     }
 }

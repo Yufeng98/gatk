@@ -114,61 +114,61 @@ public final class VectorLoglessPairHMM extends LoglessPairHMM {
         }
     }
 
-    /**
-     * {@inheritDoc}
-     */
-    @Override
-    public void computeLog10Likelihoods(final LikelihoodMatrix<Haplotype> logLikelihoods,
-                                        final List<GATKRead> processedReads,
-                                        final Map<GATKRead, byte[]> gcp) {
-        if (processedReads.isEmpty()) {
-            return;
-        }
-        if (doProfiling) {
-            startTime = System.nanoTime();
-        }
-        int readListSize = processedReads.size();
-        int numHaplotypes = logLikelihoods.numberOfAlleles();
-        ReadDataHolder[] readDataArray = new ReadDataHolder[readListSize];
-        int idx = 0;
-        for (GATKRead read : processedReads) {
-            readDataArray[idx] = new ReadDataHolder();
-            readDataArray[idx].readBases = read.getBases();
-            readDataArray[idx].readQuals = read.getBaseQualities();
-            readDataArray[idx].insertionGOP = ReadUtils.getBaseInsertionQualities(read);
-            readDataArray[idx].deletionGOP = ReadUtils.getBaseDeletionQualities(read);
-            readDataArray[idx].overallGCP = gcp.get(read);
-            ++idx;
-        }
+    ///**
+    // * {@inheritDoc}
+    // */
+    //@Override
+    //public void computeLog10Likelihoods(final LikelihoodMatrix<Haplotype> logLikelihoods,
+    //                                    final List<GATKRead> processedReads,
+    //                                    final Map<GATKRead, byte[]> gcp) {
+    //    if (processedReads.isEmpty()) {
+    //        return;
+    //    }
+    //    if (doProfiling) {
+    //        startTime = System.nanoTime();
+    //    }
+    //    int readListSize = processedReads.size();
+    //    int numHaplotypes = logLikelihoods.numberOfAlleles();
+    //    ReadDataHolder[] readDataArray = new ReadDataHolder[readListSize];
+    //    int idx = 0;
+    //    for (GATKRead read : processedReads) {
+    //        readDataArray[idx] = new ReadDataHolder();
+    //        readDataArray[idx].readBases = read.getBases();
+    //        readDataArray[idx].readQuals = read.getBaseQualities();
+    //        readDataArray[idx].insertionGOP = ReadUtils.getBaseInsertionQualities(read);
+    //        readDataArray[idx].deletionGOP = ReadUtils.getBaseDeletionQualities(read);
+    //        readDataArray[idx].overallGCP = gcp.get(read);
+    //        ++idx;
+    //    }
 
-        mLogLikelihoodArray = new double[readListSize * numHaplotypes];      //to store results
-        if (doProfiling) {
-            threadLocalSetupTimeDiff = (System.nanoTime() - startTime);
-        }
-        //for(reads)
-        //   for(haplotypes)
-        //       compute_full_prob()
-        pairHmm.computeLikelihoods(readDataArray, mHaplotypeDataArray, mLogLikelihoodArray);
+    //    mLogLikelihoodArray = new double[readListSize * numHaplotypes];      //to store results
+    //    if (doProfiling) {
+    //        threadLocalSetupTimeDiff = (System.nanoTime() - startTime);
+    //    }
+    //    //for(reads)
+    //    //   for(haplotypes)
+    //    //       compute_full_prob()
+    //    pairHmm.computeLikelihoods(readDataArray, mHaplotypeDataArray, mLogLikelihoodArray);
 
-        int readIdx = 0;
-        for (int r = 0; r < readListSize; r++) {
-            int hapIdx = 0;
-            for (final Haplotype haplotype : logLikelihoods.alleles()) {
+    //    int readIdx = 0;
+    //    for (int r = 0; r < readListSize; r++) {
+    //        int hapIdx = 0;
+    //        for (final Haplotype haplotype : logLikelihoods.alleles()) {
 
-                //Since the order of haplotypes in the List<Haplotype> and alleleHaplotypeMap is different,
-                //get idx of current haplotype in the list and use this idx to get the right likelihoodValue
-                final int idxInsideHaplotypeList = haplotypeToHaplotypeListIdxMap.get(haplotype);
-                logLikelihoods.set(hapIdx, r, mLogLikelihoodArray[readIdx + idxInsideHaplotypeList]);
-                ++hapIdx;
-            }
-            readIdx += numHaplotypes;
-        }
-        if (doProfiling) {
-            threadLocalPairHMMComputeTimeDiff = (System.nanoTime() - startTime);
-            pairHMMComputeTime += threadLocalPairHMMComputeTimeDiff;
-            pairHMMSetupTime += threadLocalSetupTimeDiff;
-        }
-    }
+    //            //Since the order of haplotypes in the List<Haplotype> and alleleHaplotypeMap is different,
+    //            //get idx of current haplotype in the list and use this idx to get the right likelihoodValue
+    //            final int idxInsideHaplotypeList = haplotypeToHaplotypeListIdxMap.get(haplotype);
+    //            logLikelihoods.set(hapIdx, r, mLogLikelihoodArray[readIdx + idxInsideHaplotypeList]);
+    //            ++hapIdx;
+    //        }
+    //        readIdx += numHaplotypes;
+    //    }
+    //    if (doProfiling) {
+    //        threadLocalPairHMMComputeTimeDiff = (System.nanoTime() - startTime);
+    //        pairHMMComputeTime += threadLocalPairHMMComputeTimeDiff;
+    //        pairHMMSetupTime += threadLocalSetupTimeDiff;
+    //    }
+    //}
 
 
     @Override

@@ -30,6 +30,7 @@ public abstract class AFCalculator {
 
         // reset the result, so we can store our new result there
         final StateTracker stateTracker = getStateTracker(true, maximumAlternativeAlleles);
+        //System.err.print("Xiao:cakk getLog10PNonRef from walkers/genotyper/afcalc/AFCalculator.java\n");
         return computeLog10PNonRef(vc, defaultPloidy, log10AlleleFrequencyPriors, stateTracker);
     }
 

@@ -139,6 +139,11 @@ final class StateTracker {
                 log10LikelihoodsForAFGt0Sum = MathUtils.LOG10_P_OF_ZERO;
             } else {
                 log10LikelihoodsForAFGt0Sum = MathUtils.log10SumLog10(log10LikelihoodsForAFGt0, 0, log10LikelihoodsForAFGt0CacheIndex);
+                //Print for debug:
+                //for(int i=0; i<log10LikelihoodsForAFGt0CacheIndex;i++){
+                //    System.err.printf("Xiao:afcalc/StateTracker/getLog10LikelihoodOfAFNotZero: log10LikelihoodsForAFGt0[%d]=%f\n",i,log10LikelihoodsForAFGt0[i]);
+                //}
+                //end print for debug
             }
         }
         return log10LikelihoodsForAFGt0Sum;
@@ -170,10 +175,12 @@ final class StateTracker {
         final Map<Allele, Double> log10pRefByAllele = new LinkedHashMap<>(allelesUsedInGenotyping.size());
         for ( int i = 0; i < subACOfMLE.length; i++ ) {
             final Allele allele = allelesUsedInGenotyping.get(i+1);
+            
             final double log10PRef = alleleCountsOfMAP[i] > 0 ? -10000 : 0; // TODO -- a total hack but in effect what the old behavior was
+            //System.err.printf("Xiao: afcalc/StateTracker/toAFCalculationResult: alleleCountsOfMAP[%d]=%d log10PRefByAllele=%f\n", i,alleleCountsOfMAP[i], log10PRef );
             log10pRefByAllele.put(allele, log10PRef);
         }
-
+        //System.err.printf("Xiao: afcalc/StateTracker/toAFCalculationResult: getLog10LikelihoodOfAFzero=%f getLog10LikelihoodOfAFNotZero=%f log10Likelihoods[0]=%f log10Likelihoods[1]=%f\n", getLog10LikelihoodOfAFzero(), getLog10LikelihoodOfAFNotZero(),log10Likelihoods[0],log10Likelihoods[1] );
         return new AFCalculationResult(subACOfMLE, allelesUsedInGenotyping, log10Likelihoods, log10Priors, log10pRefByAllele);
     }
 

@@ -2,10 +2,10 @@ package org.broadinstitute.hellbender.tools.walkers.genotyper;
 
 import htsjdk.variant.variantcontext.Allele;
 import htsjdk.variant.variantcontext.GenotypeLikelihoods;
+//import org.broadinstitute.hellbender.tools.walkers.genotyper.GenotypingLikelihoods;
 import org.broadinstitute.hellbender.utils.Utils;
 import org.broadinstitute.hellbender.utils.genotyper.AlleleList;
 import org.broadinstitute.hellbender.utils.genotyper.SampleList;
-
 import java.util.List;
 
 /**

@@ -583,12 +583,16 @@ public final class HaplotypeCallerEngine implements AssemblyRegionEvaluator {
         final Map<String,List<GATKRead>> reads = splitReadsBySample(regionForGenotyping.getReads());
 
         // Calculate the likelihoods: CPU intensive part.
-        final ReadLikelihoods<Haplotype> readLikelihoods =
+        final List<ReadLikelihoods<Haplotype>> readLikelihoods =
                 likelihoodCalculationEngine.computeReadLikelihoods(assemblyResult, samplesList, reads);
 
         // Realign reads to their best haplotype.
-        final Map<GATKRead, GATKRead> readRealignments = AssemblyBasedCallerUtils.realignReadsToTheirBestHaplotype(readLikelihoods, assemblyResult.getReferenceHaplotype(), assemblyResult.getPaddedReferenceLoc(), aligner);
-        readLikelihoods.changeReads(readRealignments);
+	// Xiao: this part is based on lowerbound only because I think it only modifies Cigar strings of reads 
+        final Map<GATKRead, GATKRead> readRealignments = AssemblyBasedCallerUtils.realignReadsToTheirBestHaplotype(readLikelihoods.get(0), assemblyResult.getReferenceHaplotype(), assemblyResult.getPaddedReferenceLoc(), aligner);
+        readLikelihoods.get(0).changeReads(readRealignments);
+        readLikelihoods.get(1).changeReads(readRealignments);
+        readLikelihoods.get(2).changeReads(readRealignments);
+
 
         // Note: we used to subset down at this point to only the "best" haplotypes in all samples for genotyping, but there
         //  was a bad interaction between that selection and the marginalization that happens over each event when computing
@@ -616,7 +620,7 @@ public final class HaplotypeCallerEngine implements AssemblyRegionEvaluator {
                 calledHaplotypeSet.add(assemblyResult.getReferenceHaplotype());
             }
             haplotypeBAMWriter.get().writeReadsAlignedToHaplotypes(haplotypes, assemblyResult.getPaddedReferenceLoc(), haplotypes,
-                                                             calledHaplotypeSet, readLikelihoods,regionForGenotyping.getSpan());
+                                                             calledHaplotypeSet, readLikelihoods.get(0),regionForGenotyping.getSpan());
         }
 
         if( hcArgs.debug) {
@@ -637,7 +641,7 @@ public final class HaplotypeCallerEngine implements AssemblyRegionEvaluator {
                 // output variant containing region.
                 result.addAll(referenceConfidenceModel.calculateRefConfidence(assemblyResult.getReferenceHaplotype(),
                         calledHaplotypes.getCalledHaplotypes(), assemblyResult.getPaddedReferenceLoc(), regionForGenotyping,
-                        readLikelihoods, genotypingEngine.getPloidyModel(), calledHaplotypes.getCalls(), hcArgs.genotypeArgs.supportVariants != null,
+                        readLikelihoods.get(0), genotypingEngine.getPloidyModel(), calledHaplotypes.getCalls(), hcArgs.genotypeArgs.supportVariants != null,
                         VCpriors));
                 // output right-flanking non-variant section:
                 if (trimmingResult.hasRightFlankingRegion()) {

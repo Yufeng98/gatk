@@ -2,10 +2,10 @@ package org.broadinstitute.hellbender.tools.walkers.genotyper;
 
 import htsjdk.variant.variantcontext.Allele;
 import htsjdk.variant.variantcontext.GenotypeLikelihoods;
+//import org.broadinstitute.hellbender.tools.walkers.genotyper.GenotypeLikelihoods;
 import org.broadinstitute.hellbender.utils.MathUtils;
 import org.broadinstitute.hellbender.utils.Utils;
 import org.broadinstitute.hellbender.utils.genotyper.LikelihoodMatrix;
-
 import java.util.Comparator;
 import java.util.PriorityQueue;
 
@@ -262,6 +262,9 @@ public final class GenotypeLikelihoodCalculator {
                 = readLikelihoodComponentsByAlleleCount(likelihoods);
         final double[][] genotypeLikelihoodByRead = genotypeLikelihoodByRead(readLikelihoodComponentsByAlleleCount,readCount);
         final double[] readLikelihoodsByGenotypeIndex = genotypeLikelihoods(genotypeLikelihoodByRead, readCount);
+        //for(int g=0;g<readLikelihoodsByGenotypeIndex.length;g++){
+        //    System.err.printf("Xiao: walkers/genotyper/GenotypeLikelihoodCalculator.java/genotypeLikelihoods: g=%d readLikelihoodsByGenotypeIndex=%f\n",g,readLikelihoodsByGenotypeIndex[g]);
+        //}
         return GenotypeLikelihoods.fromLog10Likelihoods(readLikelihoodsByGenotypeIndex);
     }
 

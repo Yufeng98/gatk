@@ -21,12 +21,24 @@ public final class ReferenceDiploidExactAFCalculator extends ExactAFCalculator {
     @Override
     protected AFCalculationResult computeLog10PNonRef(final VariantContext vc, final int defaultPloidy,
                                                       final double[] log10AlleleFrequencyPriors, final StateTracker stateTracker) {
+        //System.err.print("Xiao:callcomputeLog10PNonRef from  ReferenceDiploidExactAFCalculator\n");
         Utils.nonNull(vc, "vc is null");
         Utils.nonNull(log10AlleleFrequencyPriors, "log10AlleleFrequencyPriors is null");
         Utils.nonNull(stateTracker, "stateTracker is null");
         final int numAlternateAlleles = vc.getNAlleles() - 1;
 
         final List<double[]> genotypeLikelihoods = getGLs(vc.getGenotypes(), true, vc.hasAllele(Allele.NON_REF_ALLELE));
+        //////Print for debug
+        //for (int i=0; i<genotypeLikelihoods.size();i++){
+        //    for(int j=0;j<genotypeLikelihoods.get(i).length;j++){
+        //        System.err.printf("Xiao: in ReferencecomputeLog10PNonRef: genotypelikelihoods.get(%d)[%d]=%f\n",i,j,genotypeLikelihoods.get(i)[j]);
+        //    }
+        //}
+        //for(int i=0;i<log10AlleleFrequencyPriors.length;i++){
+        //    System.err.printf("Xiao: in computeLog10PNonRef: log10AlleleFrequencyPriors[%d]=%f\n",i,log10AlleleFrequencyPriors[i]);
+        //    
+        //}
+        ////end print for debug
         final int numSamples = genotypeLikelihoods.size()-1;
         final int numChr = 2*numSamples;
 
@@ -93,6 +105,7 @@ public final class ReferenceDiploidExactAFCalculator extends ExactAFCalculator {
         }
 
         // add conformations for the k+2 case if it makes sense; note that the 2 new alleles may be the same or different
+        //System.err.printf("Xiao: numAlternateAlleles=%d ACwiggle=%d\n",numAltAlleles,ACwiggle);
         if ( ACwiggle > 1 ) {
             final List<DependentSet> differentAlleles = new ArrayList<>(numAltAlleles * numAltAlleles);
             final List<DependentSet> sameAlleles = new ArrayList<>(numAltAlleles);
@@ -106,8 +119,10 @@ public final class ReferenceDiploidExactAFCalculator extends ExactAFCalculator {
                     // to get to this conformation, a sample would need to be BB or BC (remember that ref=0, so add one to the index)
                     final int PLindex = GenotypeLikelihoods.calculatePLindex(allele_i + 1, allele_j + 1);
                     if ( allele_i == allele_j ) {
+                        //System.err.printf("Xiao: in calculateAlleleconformation: same allele\n");
                         sameAlleles.add(new DependentSet(ACcountsClone, PLindex));
                     } else {
+                        //System.err.printf("Xiao: in calculateAlleleconformation: different alleles\n");
                         differentAlleles.add(new DependentSet(ACcountsClone, PLindex));
                     }
                 }
@@ -133,16 +148,27 @@ public final class ReferenceDiploidExactAFCalculator extends ExactAFCalculator {
         final double[] setLog10Likelihoods = set.getLog10Likelihoods();
         setLog10Likelihoods[0] = 0.0; // the zero case
         final int totalK = set.getACsum();
-
+        //Print for debug
+        for(int i=0; i<set.getACcounts().getCounts().length;i++){
+            //System.err.printf("Xiao: in computeLofK: set.ACcount.counts[%d]=%d\n",i,set.getACcounts().getCounts()[i]);
+        }
+        for(int i=0;i<setLog10Likelihoods.length;i++){
+          //System.err.printf("Xiao: in computeLofK:setLog10Likelihoods[%d]=%f setLog10Likelihoods.length=%d \n",i,setLog10Likelihoods[i],setLog10Likelihoods.length);
+        }
+        //end print for debug
         // special case for k = 0 over all k
         if ( totalK == 0 ) {
             for (int j = 1, n = setLog10Likelihoods.length; j < n; j++ ) {
                 setLog10Likelihoods[j] = setLog10Likelihoods[j - 1] + genotypeLikelihoods.get(j)[HOM_REF_INDEX];
+                //System.err.printf("Xiao: afcalc/ReferenceDioloidExactAFCalculator.java/computeLofK,setLog10Likelihoods[j] = setLog10Likelihoods[j - 1] + genotypeLikelihoods.get(j)[HOM_REF_INDEX]\n" );
+                //System.err.printf("Xiao: afcalc/ReferenceDioloidExactAFCalculator.java/computeLofK, setLog10Likelihoods[j]=%f, setLog10Likelihoods[j - 1]=%f, genotypeLikelihoods.get(j)[HOM_REF_INDEX]=%f\n",setLog10Likelihoods[j],setLog10Likelihoods[j-1],genotypeLikelihoods.get(j)[HOM_REF_INDEX] );
             }
 
             final double log10Lof0 = setLog10Likelihoods[setLog10Likelihoods.length-1];
+
             stateTracker.setLog10LikelihoodOfAFzero(log10Lof0);
             stateTracker.setLog10PosteriorOfAFzero(log10Lof0 + log10AlleleFrequencyPriors[0]);
+            //System.err.printf("Xiao: afcalc/ReferenceDioloidExactAFCalculator.java/computeLofK,setLog10LikelihoodOfAFzero=setLog10Likelihoods[setLog10Likelihoods.length-1]=%f setLog10PosteriorOfAFzero=setLog10Likelihoods[setLog10Likelihoods.length-1]+log10AlleleFrequencyPriors[0]=%f\n",log10Lof0,log10Lof0 + log10AlleleFrequencyPriors[0] );
             return;
         }
 
@@ -153,26 +179,38 @@ public final class ReferenceDiploidExactAFCalculator extends ExactAFCalculator {
             if ( totalK < 2*j-1 ) {
                 final double[] gl = genotypeLikelihoods.get(j);
                 final double conformationValue = MathUtils.log10(2*j-totalK) + MathUtils.log10(2*j-totalK-1) + setLog10Likelihoods[j-1] + gl[HOM_REF_INDEX];
+                //System.err.printf("Xiao: afcalc/ReferenceDioloidExactAFCalculator.java/computeLofK, totalK=%d, setLog10Likelihoods[%d]=%f,genotypeLikelihoods.get(%d)[HOM_REF_INDEX]=%f setLog10Likelihoods[%d]=%f \n",totalK,j-1, setLog10Likelihoods[j - 1] ,j,genotypeLikelihoods.get(j)[HOM_REF_INDEX],j,setLog10Likelihoods[j] );
+             
+                //System.err.printf("Xiao: afcalc/ReferenceDioloidExactAFCalculator.java/computeLofK, setLog10Likelihoods[j]= MathUtils.approximateLog10SumLog10(setLog10Likelihoods[j], conformationValue)\n");
+                //System.err.printf("Xiao: afcalc/ReferenceDioloidExactAFCalculator.java/computeLofK, conformationValue= MathUtils.log10(2*j-totalK) + MathUtils.log10(2*j-totalK-1) + setLog10Likelihoods[j-1] + gl[HOM_REF_INDEX]\n");
+                //System.err.printf("Xiao: afcalc/ReferenceDioloidExactAFCalculator.java/computeLofK, MathUtils.log10(2*j-totalK) + MathUtils.log10(2*j-totalK-1)=%f , setLog10Likelihoods[j-1]=%f , gl[HOM_REF_INDEX]=%f, conformationValue=%f\n",MathUtils.log10(2*j-totalK) + MathUtils.log10(2*j-totalK-1),setLog10Likelihoods[j-1],gl[HOM_REF_INDEX], conformationValue);
+                
+                //System.err.printf("Xiao: afcalc/ReferenceDioloidExactAFCalculator.java/computeLofK, setLog10Likelihoods[j] ori=%f conformationValue=%f setLog10Likelihoods[j]final=%f \n", setLog10Likelihoods[j],conformationValue,MathUtils.approximateLog10SumLog10(setLog10Likelihoods[j], conformationValue));
                 setLog10Likelihoods[j] = MathUtils.approximateLog10SumLog10(setLog10Likelihoods[j], conformationValue);
             }
 
             final double logDenominator = MathUtils.log10(2*j) + MathUtils.log10(2*j-1);
             setLog10Likelihoods[j] = setLog10Likelihoods[j] - logDenominator;
+            //System.err.printf("Xiao: afcalc/ReferenceDioloidExactAFCalculator.java/computeLofK, setLog10Likelihoods[j] = setLog10Likelihoods[j] - MathUtils.log10(2*j) + MathUtils.log10(2*j-1)\n");
+            //System.err.printf("Xiao: afcalc/ReferenceDioloidExactAFCalculator.java/computeLofK, setLog10Likelihoods[j]=%f MathUtils.log10(2*j) + MathUtils.log10(2*j-1)=%f\n",setLog10Likelihoods[j],MathUtils.log10(2*j) + MathUtils.log10(2*j-1));
+
         }
 
         double log10LofK = setLog10Likelihoods[setLog10Likelihoods.length-1];
-
         // update the MLE if necessary
         stateTracker.updateMLEifNeeded(log10LofK, set.getACcounts().getCounts());
+        //System.err.printf("Xiao: afcalc/ReferenceDioloidExactAFCalculator.java/computeLofK updateMLE log10LofK=setLog10Likelihoods[setLog10Likelihoods.length-1]=%f\n",log10LofK);
 
         // apply the priors over each alternate allele
         for ( final int ACcount : set.getACcounts().getCounts() ) {
             if ( ACcount > 0 ) {
                 log10LofK += log10AlleleFrequencyPriors[ACcount];
+                //System.err.printf("Xiao: afcalc/ReferenceDioloidExactAFCalculator.java/computeLofK prior=%f log10LofK+=prior=%f\n",log10AlleleFrequencyPriors[ACcount],log10LofK);
             }
         }
 
         stateTracker.updateMAPifNeeded(log10LofK, set.getACcounts().getCounts());
+        //System.err.printf("Xiao: afcalc/ReferenceDioloidExactAFCalculator.java/computeLofK updateMAP log10LofK=%f\n",log10LofK);
     }
 
     private static final class DependentSet {
@@ -215,13 +253,22 @@ public final class ReferenceDiploidExactAFCalculator extends ExactAFCalculator {
         final double[] targetSetLog10Likelihoods = targetSet.getLog10Likelihoods();
         final double[] dependentSetLog10Likelihoods = dependentSet.getLog10Likelihoods();
         final int[] counts = targetSet.getACcounts().getCounts();
+        for(int i=0; i<targetSetLog10Likelihoods.length;i++){
+            //System.err.printf("Xiao: afcalc/ReferenceDioloidExactAFCalculator.java/pushData, targetSet.setLog10Likelihoods[%d]=%f dependentSet.getLog10Likelihoods[%d]=%f\n",i,targetSet.getLog10Likelihoods()[i],i,dependentSet.getLog10Likelihoods()[i]);
+        
+        }
 
         for ( int j = 1, n = targetSetLog10Likelihoods.length; j < n; j++ ) {
             if (2 * j >= totalK) { // skip impossible conformations
                 final double[] gl = genotypeLikelihoods.get(j);
+                final double coeff=  determineCoefficient(PLsetIndex, j, counts, totalK);
                 final double conformationValue =
-                        determineCoefficient(PLsetIndex, j, counts, totalK) + dependentSetLog10Likelihoods[j-1] + gl[PLsetIndex];
+                        coeff + dependentSetLog10Likelihoods[j-1] + gl[PLsetIndex];
+                //System.err.printf("Xiao: afcalc/ReferenceDioloidExactAFCalculator.java/pushData,conformationValue{%f}= determineCoefficient{%f}+dependentSetLog10Likelihoods[j-1]{%f} + genotypeLikelihoods.get(j)[PLsetIndex]{%f} \n",conformationValue,coeff, dependentSetLog10Likelihoods[j-1],gl[PLsetIndex]);
+                //System.err.printf("Xiao: afcalc/ReferenceDioloidExactAFCalculator.java/pushData, targetSetLog10Likelihoods[j]{%f} = MathUtils.approximateLog10SumLog10(targetSetLog10Likelihoods[j]{%f}, conformationValue{%f})\n",MathUtils.approximateLog10SumLog10(targetSetLog10Likelihoods[j], conformationValue),targetSetLog10Likelihoods[j],conformationValue);
+                
                 targetSetLog10Likelihoods[j] = MathUtils.approximateLog10SumLog10(targetSetLog10Likelihoods[j], conformationValue);
+                
             }
         }
     }
@@ -243,6 +290,7 @@ public final class ReferenceDiploidExactAFCalculator extends ExactAFCalculator {
 
         // the AX het case
         if ( alleles.alleleIndex1 == 0 ) {
+            //System.err.printf("Xiao: afcalc/ReferenceDioloidExactAFCalculator.java/determineCoefficient,RX case: return value= MathUtils.log10(2 * ACcounts[alleles.alleleIndex2 - 1]{%d}) + MathUtils.log10(2 * j{%d} - totalK{%d})=%f\n",ACcounts[alleles.alleleIndex2 - 1],j,totalK,MathUtils.log10(2 * ACcounts[alleles.alleleIndex2 - 1]) + MathUtils.log10(2 * j - totalK));
             return MathUtils.log10(2 * ACcounts[alleles.alleleIndex2 - 1]) + MathUtils.log10(2 * j - totalK);
         }
 
@@ -252,11 +300,13 @@ public final class ReferenceDiploidExactAFCalculator extends ExactAFCalculator {
         final double coeff;
         if ( alleles.alleleIndex1 == alleles.alleleIndex2 ) {
             coeff = MathUtils.log10(k_i) + MathUtils.log10(k_i - 1);
+            //System.err.printf("Xiao: afcalc/ReferenceDioloidExactAFCalculator.java/determineCoefficient,BB case: return value= MathUtils.log10(k_i) + MathUtils.log10(k_i - 1)=%f k_i=ACcounts[alleles.alleleIndex1-1]=%d\n",coeff,ACcounts[alleles.alleleIndex1-1]);
         } else {        // the het non-ref case (e.g. BC, BD, CD)
             final int k_j = ACcounts[alleles.alleleIndex2-1];
             coeff = LOG10_OF_2 + MathUtils.log10(k_i) + MathUtils.log10(k_j);
+            //System.err.printf("Xiao: afcalc/ReferenceDioloidExactAFCalculator.java/determineCoefficient,BC case: return value= LOG10_OF_2 + MathUtils.log10(k_i{%d}) + MathUtils.log10(k_j{%d})=%f k_i=ACcounts[alleles.alleleIndex1-1] k_j=ACcounts[alleles.alleleIndex2-1]\n",ACcounts[alleles.alleleIndex1-1],ACcounts[alleles.alleleIndex2-1],coeff);
         }
-
+        
         return coeff;
     }
 }

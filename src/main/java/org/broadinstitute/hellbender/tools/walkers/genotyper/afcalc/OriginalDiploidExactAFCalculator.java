@@ -22,6 +22,7 @@ final class OriginalDiploidExactAFCalculator extends ExactAFCalculator {
                                                       final int defaultPloidy,
                                                       final double[] log10AlleleFrequencyPriors,
                                                       final StateTracker stateTracker) {
+        System.err.print("Xiao: call computeLog10PNonRef from afcalc/OriginalDiploidExactAFCalculator.java\n");
         Utils.nonNull(vc, "vc is null");
         Utils.nonNull(log10AlleleFrequencyPriors, "log10AlleleFrequencyPriors is null");
         Utils.nonNull(stateTracker, "stateTracker is null");

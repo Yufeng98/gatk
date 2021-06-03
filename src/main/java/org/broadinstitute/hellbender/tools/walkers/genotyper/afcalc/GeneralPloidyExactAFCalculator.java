@@ -19,6 +19,7 @@ public final class GeneralPloidyExactAFCalculator extends ExactAFCalculator {
 
     @Override
     protected AFCalculationResult computeLog10PNonRef(final VariantContext vc, final int defaultPloidy, final double[] log10AlleleFrequencyPriors, final StateTracker stateTracker) {
+        System.err.print("Xiao:tools/walkers/genotyper/afcalc/GeneralPloidyExactAFCalculator.java: choose this computeLog10PNonRef\n");
         Utils.nonNull(vc, "vc is null");
         Utils.nonNull(log10AlleleFrequencyPriors, "log10AlleleFrequencyPriors is null");
         Utils.nonNull(stateTracker, "stateTracker is null");
@@ -103,6 +104,7 @@ public final class GeneralPloidyExactAFCalculator extends ExactAFCalculator {
             }
             final double[] gls = genotype.getLikelihoods().getAsVector();
             if (!GATKVariantContextUtils.isInformative(gls)) {
+                System.err.print("Xiao:tools/walkers/genotyper/afcalc/GeneralPloidyExactAFCalculator.java/combineSinglePools: enter isInformatives but not modified\n");
                 continue;
             }
             stateTracker.reset();

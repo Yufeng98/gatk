@@ -20,6 +20,7 @@ import org.broadinstitute.hellbender.utils.pileup.ReadPileup;
 import org.broadinstitute.hellbender.utils.variant.GATKVCFConstants;
 import org.broadinstitute.hellbender.utils.variant.GATKVCFHeaderLines;
 import org.broadinstitute.hellbender.utils.variant.GATKVariantContextUtils;
+import org.broadinstitute.hellbender.utils.haplotype.Haplotype;
 
 import java.util.*;
 import java.util.stream.Collectors;
@@ -204,10 +205,21 @@ public abstract class GenotypingEngine<Config extends StandardCallerArgumentColl
      *
      * @return can be {@code null} indicating that genotyping it not possible with the information provided.
      */
+    //Original
     public VariantCallContext calculateGenotypes(final VariantContext vc, final GenotypeLikelihoodsCalculationModel model, final SAMFileHeader header) {
         Utils.nonNull(vc, "vc cannot be null");
         Utils.nonNull(model, "the model cannot be null");
         return calculateGenotypes(null,null,null,null,vc,model,false,null,header);
+    }
+    //Prune method
+    public VariantCallContext calculateGenotypes(final boolean exact_only,final List<VariantContext> vc, final GenotypeLikelihoodsCalculationModel model, final SAMFileHeader header,List<ReadLikelihoods<Allele>> readAlleleLikelihoods,boolean[] moreRecompute, final List<Allele> bestAlleleList) {
+        Utils.nonNull(vc, "vc cannot be null");
+        Utils.nonNull(model, "the model cannot be null");
+        if(exact_only ){
+            return calculateGenotypes(null,null,null,null,vc.get(0),model,false,null,header);
+        }else{
+            return calculateGenotypes(null,null,null,null,vc,model,false,null,header,readAlleleLikelihoods,moreRecompute,bestAlleleList);
+        }
     }
 
     /**
@@ -222,6 +234,7 @@ public abstract class GenotypingEngine<Config extends StandardCallerArgumentColl
      * @param inheritAttributesFromInputVC       Output VC will contain attributes inherited from input vc
      * @return                                   VC with assigned genotypes
      */
+    //Original
     protected VariantCallContext calculateGenotypes(final FeatureContext features,
                                                     final ReferenceContext refContext,
                                                     final AlignmentContext rawContext,
@@ -268,7 +281,8 @@ public abstract class GenotypingEngine<Config extends StandardCallerArgumentColl
 
         // Add 0.0 removes -0.0 occurrences.
         final double phredScaledConfidence = (-10.0 * log10Confidence) + 0.0;
-
+        //System.err.printf("Enter3 passEmit from walkers/genotyper/GnotypingEngine.java AFresult.getLog10PosteriorOfAFGT0()=%f log10Confidence=%f allele size=%d\n",AFresult.getLog10PosteriorOfAFGT0(),log10Confidence,outputAlternativeAlleles.outputAlleles(vc.getReference()).size());
+        //System.err.printf("calculateGenotypes exact_only: passEmit=%b siteIsMonomorphic=%b",passesEmitThreshold(phredScaledConfidence, outputAlternativeAlleles.siteIsMonomorphic),outputAlternativeAlleles.siteIsMonomorphic);
         // return a null call if we don't pass the confidence cutoff or the most likely allele frequency is zero
         // skip this if we are already looking at a vc with NON_REF as the first alt allele i.e. if we are in GenotypeGVCFs
         if ( !passesEmitThreshold(phredScaledConfidence, outputAlternativeAlleles.siteIsMonomorphic)
@@ -285,6 +299,7 @@ public abstract class GenotypingEngine<Config extends StandardCallerArgumentColl
         if (! forceSiteEmission()
                 && outputAlternativeAlleles.alleles.size() == 1
                 && Allele.SPAN_DEL.equals(outputAlternativeAlleles.alleles.get(0))) {
+                System.err.printf("spanning deletion\n");
             return null;
         }
 
@@ -324,6 +339,238 @@ public abstract class GenotypingEngine<Config extends StandardCallerArgumentColl
         }
 
         return new VariantCallContext(vcCall, confidentlyCalled(phredScaledConfidence, probOfAtLeastOneAltAllele));
+    }
+    //Prune method
+    //About vc:
+        //if bounds are not crossed && biallic case:            
+        //  vc[0]=guaranteed pass if pass
+        //  vc[1]=guaranteed fail if fail
+        //  vc[2]=exact
+        //if bounds are not crossed && multiple alleles with RA best case: 
+        //  vc[0]=guarantee to pass with {RR,XR,XX}
+        //  vc[1]=guarantee to pass with {XX,XA,AA}
+        //  vc[2]=guarantee to fail with {RR,XR,XX}
+        //  vc[3]=guarantee to fail with {XX,XA,AA}
+        //  vc[4]=exact
+        //if bounds are not crossed && multiple alleles with AB best case:
+        //  vc[0]=guarantee to pass with {RR,XR,XX}
+        //  vc[1]=guarantee to pass with {XX,XA,AA}
+        //  vc[2]=guarantee to pass with {XX,XB,BB}
+        //  vc[3]=guarantee to fail with {RR,XR,XX}
+        //  vc[4]=guarantee to fail with {XX,XA,AA}
+        //  vc[5]=guarantee to fail with {XX,XB,BB}
+        //  vc[6]=exact
+    protected VariantCallContext calculateGenotypes(final FeatureContext features,
+                                                    final ReferenceContext refContext,
+                                                    final AlignmentContext rawContext,
+                                                    Map<String, AlignmentContext> stratifiedContexts,
+                                                    final List<VariantContext> vc,
+                                                    final GenotypeLikelihoodsCalculationModel model,
+                                                    final boolean inheritAttributesFromInputVC,
+                                                    final ReadLikelihoods<Allele> likelihoods,
+                                                    final SAMFileHeader header,
+                                                    List<ReadLikelihoods<Allele>> readAlleleLikelihoods,
+                                                    boolean [] moreRecompute,
+                                                    final List<Allele> bestAlleleList
+                                                    ) {
+        final boolean limitedContext = features == null || refContext == null || rawContext == null || stratifiedContexts == null;
+        //System.err.printf("Enter0 calculateGenotypes from walkers/genotyper/GnotypingEngine.java #vc=%d\n",vc.size());
+        // if input VC can't be genotyped, exit with either null VCC or, in case where we need to emit all sites, an empty call
+        if (hasTooManyAlternativeAlleles(vc.get(0)) || vc.get(0).getNSamples() == 0) {
+            System.err.print("Xiao:walkers/genotyper/GnotypingEngine.java/calculateGenotypes: enter hasTooManyAlternativeAlleles but not implemented\n");
+            return emptyCallContext(features, refContext, rawContext, header);
+        }
+
+        final int defaultPloidy = configuration.genotypeArgs.samplePloidy;
+        final int maxAltAlleles = configuration.genotypeArgs.MAX_ALTERNATE_ALLELES;
+        //System.err.printf("Xiao: configuration.genotypeArgs.MAX_ALTERNATE_ALLELES=%d\n",configuration.genotypeArgs.MAX_ALTERNATE_ALLELES);
+        
+        List<VariantContext> reducedVC = new ArrayList<VariantContext>(vc);
+        //System.err.print("Enter1 calculateGenotypes from walkers/genotyper/GnotypingEngine.java\n");
+        if (maxAltAlleles < vc.get(0).getAlternateAlleles().size()) {
+            System.err.print("Xiao: enter subset alles but not modified yet: walkers/genotyper/GenotypingEngine.java/calculateGenotypes\n");
+            //final List<Allele> allelesToKeep = AlleleSubsettingUtils.calculateMostLikelyAlleles(vc.get(0), defaultPloidy, maxAltAlleles);
+            //final GenotypesContext reducedGenotypes = allelesToKeep.size() == 1 ? GATKVariantContextUtils.subsetToRefOnly(vc.get(0), defaultPloidy) :
+            //        AlleleSubsettingUtils.subsetAlleles(vc.get(0).getGenotypes(), defaultPloidy, vc.get(0).getAlleles(), allelesToKeep, GenotypeAssignmentMethod.SET_TO_NO_CALL, vc.get(0).getAttributeAsInt(VCFConstants.DEPTH_KEY, 0));
+            //reducedVC=new VariantContextBuilder(vc.get(0)).alleles(allelesToKeep).genotypes(reducedGenotypes).make();
+        }
+        
+        //System.err.print("Enter2 calculateGenotypes from walkers/genotyper/GnotypingEngine.java\n");
+
+        final List<AFCalculator> afCalculator = new ArrayList<AFCalculator>();
+        final List<AFCalculationResult> AFresult = new ArrayList<AFCalculationResult>(); 
+        final List<OutputAlleleSubset> outputAlternativeAlleles = new ArrayList<OutputAlleleSubset>();
+        final double[] probOfAtLeastOneAltAllele = new double[vc.size()];
+        final double[] log10Confidence = new double[vc.size()];
+        final double[] phredScaledConfidence = new double[vc.size()];
+        boolean[] passEmit = new boolean[vc.size()];
+
+        for(int iPassEmit = 0; iPassEmit<vc.size();iPassEmit++){
+            //We need to figure out afCalculator
+            //System.err.printf("walkers/genotyper/GnotypingEngine.java vc[%d]\n",iPassEmit);
+            afCalculator.add(configuration.genotypeArgs.USE_NEW_AF_CALCULATOR ? newAFCalculator
+                    : afCalculatorProvider.getInstance(vc.get(iPassEmit),defaultPloidy,maxAltAlleles));
+            
+            AFresult.add(afCalculator.get(iPassEmit).getLog10PNonRef(reducedVC.get(iPassEmit), defaultPloidy, maxAltAlleles, getAlleleFrequencyPriors(vc.get(iPassEmit),defaultPloidy,model)));
+            
+            outputAlternativeAlleles.add(calculateOutputAlleleSubset(AFresult.get(iPassEmit), vc.get(iPassEmit)));
+            //System.err.printf("walkers/genotyper/GnotypingEngine.java after outputAlternativeAlleles\n");
+
+            // posterior probability that at least one alt allele exists in the samples
+            probOfAtLeastOneAltAllele[iPassEmit] = Math.pow(10, AFresult.get(iPassEmit).getLog10PosteriorOfAFGT0());
+
+            // note the math.abs is necessary because -10 * 0.0 => -0.0 which isn't nice
+            //I dont think selection matters here since passEmitThreshold requires both !siteIsMonomorphic and phredScaledConfidence<threshold
+            log10Confidence[iPassEmit] = 
+                    ! outputAlternativeAlleles.get(iPassEmit).siteIsMonomorphic ||
+                            configuration.genotypingOutputMode == GenotypingOutputMode.GENOTYPE_GIVEN_ALLELES || configuration.annotateAllSitesWithPLs
+                            ? AFresult.get(iPassEmit).getLog10PosteriorOfAFEq0() + 0.0
+                            : AFresult.get(iPassEmit).getLog10PosteriorOfAFGT0() + 0.0 ;
+
+
+            // Add 0.0 removes -0.0 occurrences.
+            phredScaledConfidence[iPassEmit]=(-10.0 * log10Confidence[iPassEmit]) + 0.0;
+
+            // return a null call if we don't pass the confidence cutoff or the most likely allele frequency is zero
+            // skip this if we are already looking at a vc with NON_REF as the first alt allele i.e. if we are in GenotypeGVCFs
+            //passEmit[iPassEmit] = passesEmitThreshold(phredScaledConfidence[iPassEmit], outputAlternativeAlleles.get(iPassEmit).siteIsMonomorphic);
+            passEmit[iPassEmit] = passesEmitThreshold(phredScaledConfidence[iPassEmit],outputAlternativeAlleles.get(iPassEmit).siteIsMonomorphic );
+        
+        }
+        ////Print for debug
+        //for(int i=0;i<passEmit.length;i++){
+        //    System.err.printf("Enter3 passEmit from walkers/genotyper/GnotypingEngine.java passEmit[%d]=%b AFresult.get(i).getLog10PosteriorOfAFGT0()=%f siteIsMonomorphic=%b log10Confidence=%f allele size=%d\n",i,passEmit[i],AFresult.get(i).getLog10PosteriorOfAFGT0(),outputAlternativeAlleles.get(i).siteIsMonomorphic,log10Confidence[i],outputAlternativeAlleles.get(i).outputAlleles(vc.get(0).getReference()).size());
+        //}
+        ////End print for debug
+
+        //Combine guaranteed pass and guaranteed fail results
+        boolean passEmit_combined=false;
+        boolean recompute = false;
+        //biallelic case
+        if(vc.size()==3){
+            boolean mostLikelyStayed = outputAlternativeAlleles.get(0).outputAlleles(vc.get(0).getReference()).size()!=1;
+            boolean mostLikelyFiltered = outputAlternativeAlleles.get(1).outputAlleles(vc.get(0).getReference()).size()==1;
+            boolean gToPass = passEmit[0] ;
+            boolean gToFail = !passEmit[1];
+            recompute = (!gToPass && !gToFail) || (gToPass && !mostLikelyStayed);
+            passEmit_combined = gToPass ? true : false;
+            //System.err.printf("walkers/genotyper/GnotypingEngine.java biallelic case mostLikelyStayed=%b mostLikelyFiltered=%b passEmit_combined=%b\n",mostLikelyStayed,mostLikelyFiltered, passEmit_combined);
+        }
+        //multiple allele case with RA or AA:
+        else if(vc.size()==5){
+            //Make sure the allele with max PL is stayed or filtered 
+            boolean mostLikelyStayed = outputAlternativeAlleles.get(1).outputAlleles(vc.get(0).getReference()).indexOf(bestAlleleList.get(1))!=-1 
+                                        && bestAlleleList.get(1)!=vc.get(1).getReference();
+            boolean mostLikelyFiltered = outputAlternativeAlleles.get(3).outputAlleles(vc.get(0).getReference()).indexOf(bestAlleleList.get(1))==-1 
+                                        || bestAlleleList.get(1)==vc.get(1).getReference();
+            boolean gToPass = passEmit[0];
+            boolean gToFail = !passEmit[2];
+            recompute = (!gToPass && !gToFail) || (gToPass && !mostLikelyStayed);
+            passEmit_combined = gToPass ? true : false;
+            //System.err.printf("walkers/genotyper/GnotypingEngine.java multi alleles RA or AA case mostLikelyStayed=%b mostLikelyFiltered=%b passEmit_combined=%b\n",mostLikelyStayed,mostLikelyFiltered, passEmit_combined);
+        }
+        //multiple allele case with AB:
+        else {
+            boolean[] mostLikelyStayed = new boolean[2];
+            boolean[] mostLikelyFiltered = new boolean[2];
+
+            mostLikelyStayed[0] = outputAlternativeAlleles.get(1).outputAlleles(vc.get(0).getReference()).indexOf(bestAlleleList.get(0))!=-1
+                                && bestAlleleList.get(0)!=vc.get(0).getReference();
+            mostLikelyStayed[1] = outputAlternativeAlleles.get(2).outputAlleles(vc.get(0).getReference()).indexOf(bestAlleleList.get(1))!=-1
+                                        && bestAlleleList.get(1)!=vc.get(0).getReference();
+            mostLikelyFiltered[0] = outputAlternativeAlleles.get(4).outputAlleles(vc.get(0).getReference()).indexOf(bestAlleleList.get(0))==-1 
+                                        || bestAlleleList.get(0)==vc.get(0).getReference();
+            mostLikelyFiltered[1] = outputAlternativeAlleles.get(5).outputAlleles(vc.get(0).getReference()).indexOf(bestAlleleList.get(1))==-1
+                                        || bestAlleleList.get(1)==vc.get(0).getReference();
+            boolean gToPass = passEmit[0];
+            boolean gToFail = !passEmit[3];
+            recompute = (!gToPass && !gToFail) || (gToPass && !(mostLikelyStayed[0] && mostLikelyStayed[1]));
+            passEmit_combined = recompute ? false : gToPass;
+            //System.err.printf("walkers/genotyper/GnotypingEngine.java multi alleles AB case mostLikelyStayed[0]=%b [1]=%b mostLikelyFiltered[0]=%b [1]=%b passEmit_combined=%b\n",mostLikelyStayed[0],mostLikelyStayed[1],mostLikelyFiltered[0],mostLikelyFiltered[1], passEmit_combined);
+        }
+        //Handle recompute
+        moreRecompute[1]=recompute;
+        
+        if ( !passEmit_combined
+                && !forceSiteEmission()
+                && noAllelesOrFirstAlleleIsNotNonRef(outputAlternativeAlleles.get(0).alleles)) {
+            // technically, at this point our confidence in a reference call isn't accurately estimated
+            //  because it didn't take into account samples with no data, so let's get a better estimate
+            //System.err.print("Xiao:walkers/genotyper/GenotypingEngine.java/calculateGenotypes: failed passesEmitcombined\n");
+            final double[] AFpriors = getAlleleFrequencyPriors(vc.get(0), defaultPloidy, model);
+            final int INDEX_FOR_AC_EQUALS_1 = 1;
+            return limitedContext ? null : estimateReferenceConfidence(vc.get(0), stratifiedContexts, AFpriors[INDEX_FOR_AC_EQUALS_1], true, probOfAtLeastOneAltAllele[0]);
+        }
+
+        // return a null call if we aren't forcing site emission and the only alt allele is a spanning deletion
+        if (! forceSiteEmission()
+                && outputAlternativeAlleles.get(0).alleles.size() == 1
+                && Allele.SPAN_DEL.equals(outputAlternativeAlleles.get(0).alleles.get(0))) {
+            return null;
+        }
+
+        // start constructing the resulting VC
+        //System.err.print("Enter3 calculateGenotypes from walkers/genotyper/GnotypingEngine.java\n");
+        final VariantContext vc_final = vc.get(0);
+        //final List<Allele> outputAlleles = outputAlternativeAlleles.get(0).outputAlleles(vc_final.getReference());
+        final List<Allele> outputAlleles = new ArrayList<>();
+        if(bestAlleleList.get(0)==vc.get(0).getReference() && bestAlleleList.get(1)!=vc.get(0).getReference() ){
+            outputAlleles.add(bestAlleleList.get(0));
+            outputAlleles.add(bestAlleleList.get(1));
+            //System.err.printf("Enter4.0 calculateGenotypes from walkers/genotyper/GnotypingEngine.java RA case\n");
+        }else if(bestAlleleList.get(0)==bestAlleleList.get(1) && bestAlleleList.get(1)!=vc.get(0).getReference() ){
+            outputAlleles.add(vc.get(0).getReference());
+            outputAlleles.add(bestAlleleList.get(0));
+            //System.err.printf("Enter4.0 calculateGenotypes from walkers/genotyper/GnotypingEngine.java AA case\n");
+        }else if(bestAlleleList.get(0)==bestAlleleList.get(1) && bestAlleleList.get(1)==vc.get(0).getReference()){
+            outputAlleles.add(vc.get(0).getReference());
+            //System.err.printf("Enter4.0 calculateGenotypes from walkers/genotyper/GnotypingEngine.java RR case\n");
+        }else{
+            outputAlleles.add(vc.get(0).getReference());
+            outputAlleles.add(bestAlleleList.get(0));
+            outputAlleles.add(bestAlleleList.get(1));
+            //System.err.printf("Enter4.0 calculateGenotypes from walkers/genotyper/GnotypingEngine.java AB case\n");
+        }
+        
+        final VariantContextBuilder builder = new VariantContextBuilder(callSourceString(), vc_final.getContig(), vc_final.getStart(), vc_final.getEnd(), outputAlleles);
+        
+        
+        builder.log10PError(log10Confidence[0]);
+        if ( ! passesCallThreshold(phredScaledConfidence[0]) ) {
+            builder.filter(GATKVCFConstants.LOW_QUAL_FILTER_NAME);
+        }
+        //System.err.printf("Enter4 calculateGenotypes from walkers/genotyper/GnotypingEngine.java outputAlleles.size()=%d\n",outputAlleles.size());
+        
+        // create the genotypes
+        //TODO: omit subsetting if output alleles is not a proper subset of vc.getAlleles
+        final GenotypesContext genotypes = outputAlleles.size() == 1 ? GATKVariantContextUtils.subsetToRefOnly(vc_final, defaultPloidy) :
+                AlleleSubsettingUtils.subsetAlleles(vc_final.getGenotypes(), defaultPloidy, vc_final.getAlleles(), outputAlleles, GenotypeAssignmentMethod.USE_PLS_TO_ASSIGN, vc_final.getAttributeAsInt(VCFConstants.DEPTH_KEY, 0));
+        //System.err.print("Enter4.1 calculateGenotypes from walkers/genotyper/GnotypingEngine.java\n");
+        // calculating strand bias involves overwriting data structures, so we do it last
+        final Map<String, Object> attributes = composeCallAttributes(inheritAttributesFromInputVC, vc_final, rawContext, stratifiedContexts, features, refContext,
+                outputAlternativeAlleles.get(0).alternativeAlleleMLECounts(), outputAlternativeAlleles.get(0).siteIsMonomorphic, AFresult.get(0), outputAlternativeAlleles.get(0).outputAlleles(vc_final.getReference()),genotypes,model,likelihoods);
+        //System.err.print("Enter4.2 calculateGenotypes from walkers/genotyper/GnotypingEngine.java\n");
+
+        VariantContext vcCall = builder.genotypes(genotypes).attributes(attributes).make();
+        //System.err.print("Enter5 calculateGenotypes from walkers/genotyper/GnotypingEngine.java\n");
+        
+        if ( annotationEngine != null && !limitedContext ) { // limitedContext callers need to handle annotations on their own by calling their own annotationEngine
+            // Note: we want to use the *unfiltered* and *unBAQed* context for the annotations
+            final ReadPileup pileup = rawContext.getBasePileup();
+            stratifiedContexts = AlignmentContext.splitContextBySampleName(pileup, header);
+
+            vcCall = annotationEngine.annotateContext(vcCall, features, refContext, likelihoods, a -> true);
+        }
+        // if we are subsetting alleles (either because there were too many or because some were not polymorphic)
+        // then we may need to trim the alleles (because the original VariantContext may have had to pad at the end).
+        if ( outputAlleles.size() != vc_final.getAlleles().size() && !limitedContext ) // limitedContext callers need to handle allele trimming on their own to keep their alleles in sync
+        {
+            System.err.printf("Xiao: walkers/genotyper/GnotypingEngine.java/calculateGenotypes:enter outputAlleles.size() != vc_final.getAlleles().size() && !limitedContext but not implemented yet\n ");
+            vcCall = GATKVariantContextUtils.reverseTrimAlleles(vcCall);
+        }
+        //System.err.print("Enter6 calculateGenotypes from walkers/genotyper/GnotypingEngine.java\n");
+         
+        return new VariantCallContext(vcCall, confidentlyCalled(phredScaledConfidence[0], probOfAtLeastOneAltAllele[0]));
     }
 
     @VisibleForTesting
@@ -393,7 +640,7 @@ public abstract class GenotypingEngine<Config extends StandardCallerArgumentColl
                 //it's possible that the upstream deletion that spanned this site was not emitted, mooting the symbolic spanning deletion allele
                 final boolean isSpuriousSpanningDeletion = GATKVCFConstants.isSpanningDeletion(allele) && !isVcCoveredByDeletion(vc);
                 final boolean toOutput = (isPlausible || forceKeepAllele(allele) || isNonRefWhichIsLoneAltAllele) && !isSpuriousSpanningDeletion;
-
+                System.err.printf("Xiao:alternativeAlleleCount=%d isPlausible=%b toOutput=%b\n",alternativeAlleleCount,isPlausible,toOutput);
                 if (toOutput) {
                     outputAlleles.add(allele);
                     mleCounts.add(afCalculationResult.getAlleleCountAtMLE(allele));

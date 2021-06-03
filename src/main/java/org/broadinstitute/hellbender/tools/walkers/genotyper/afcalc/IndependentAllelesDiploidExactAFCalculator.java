@@ -91,7 +91,15 @@ import java.util.*;
         Utils.nonNull(vc, "vc is null");
         Utils.nonNull(log10AlleleFrequencyPriors, "log10AlleleFrequencyPriors is null");
         Utils.nonNull(stateTracker, "stateTracker is null");
-
+        //System.err.printf("Xiao:called computeLog10PNonRef from walkers/genotyper/afcalc/IndependentAllelesDiploidExactAFCalculator.java with %d alt alleles\n", vc.getNAlleles()-1);
+        ////Print for debug
+        //final List<double[]> genotypeLikelihoods = getGLs(vc.getGenotypes(), false);
+        //for (int i=0; i<genotypeLikelihoods.size();i++){
+        //    for(int j=0;j<genotypeLikelihoods.get(i).length;j++){
+        //        System.err.printf("Xiao: in computeLog10PNonRef: genotypelikelihoods.get(%d)[%d]=%f\n",i,j,genotypeLikelihoods.get(i)[j]);
+        //    }
+        //}
+        ////END Print for debug
         final List<AFCalculationResult> independentResultTrackers = computeAlleleIndependentExact(vc, defaultPloidy, log10AlleleFrequencyPriors);
 
         if ( independentResultTrackers.isEmpty() ) {
@@ -100,8 +108,11 @@ import java.util.*;
 
         if ( independentResultTrackers.size() == 1 ) {
             // fast path for the very common bi-allelic use case
+            //System.err.print("Xiao:return computeLog10PNonRef with bi-allelic case from walkers/genotyper/afcalc/IndependentAllelesDiploidExactAFCalculator.java\n");
             return independentResultTrackers.get(0);
         } else {
+            //This does RR,XR,XX
+            //System.err.print("Xiao:return computeLog10PNonRef with multi-allelic case from walkers/genotyper/afcalc/IndependentAllelesDiploidExactAFCalculator.java RR XR XX\n");
             final AFCalculationResult combinedAltAllelesResult = combineAltAlleleIndependentExact(vc,defaultPloidy,log10AlleleFrequencyPriors);
             // we are a multi-allelic, so we need to actually combine the results
             final List<AFCalculationResult> withMultiAllelicPriors = applyMultiAllelicPriors(independentResultTrackers);
@@ -111,6 +122,15 @@ import java.util.*;
 
     private AFCalculationResult combineAltAlleleIndependentExact(final VariantContext vc, final int defaultPloidy, final double[] log10AlleleFrequencyPriors) {
         final VariantContext combinedAltAllelesVariantContext = makeCombinedAltAllelesVariantContext(vc);
+        ////Print for debug
+        //final List<double[]> genotypeLikelihoods = getGLs(combinedAltAllelesVariantContext.getGenotypes(), true, combinedAltAllelesVariantContext.hasAllele(Allele.NON_REF_ALLELE));
+        //for (int i=0; i<genotypeLikelihoods.size();i++){
+        //    for(int j=0;j<genotypeLikelihoods.get(i).length;j++){
+        //        System.err.printf("Xiao: in combineAltAlleleIndependentExact: genotypelikelihoods.get(%d)[%d]=%f\n",i,j,genotypeLikelihoods.get(i)[j]);
+        //    }
+        //}
+        //END Print for debug
+
         return biAlleleExactModel.getLog10PNonRef(combinedAltAllelesVariantContext, defaultPloidy, vc.getNAlleles() - 1, log10AlleleFrequencyPriors);
     }
 
@@ -124,6 +144,7 @@ import java.util.*;
         final Allele reference = vcb.getAlleles().get(0);
         vcb.alleles(Arrays.asList(reference, Allele.NON_REF_ALLELE));
         final int genotypeCount = calculators.genotypeCount(2, vc.getNAlleles());
+        //System.err.printf("Xiao: walkers/genotyper/afcalc/IndependentAllelesDiploidExactAFCalculator.java/makeCombinedAltAllelesVariantContext numAllele=%d genotypeCount=%d\n",vc.getNAlleles(),genotypeCount);
         final double[] hetLikelihoods = new double[vc.getNAlleles() - 1];
         final double[] homAltLikelihoods = new double[genotypeCount - hetLikelihoods.length - 1];
         final double[] newLikelihoods = new double[3];
@@ -142,6 +163,7 @@ import java.util.*;
                     } else {
                         newAlleles.add(Allele.NON_REF_ALLELE);
                     }
+                    //System.err.printf("Xiao: afcalc/IndependentAllelesDiploidExactAFCalculator.java/makeCombinedAltAllelesVariantContext i=%d\n",i);
                 }
                 gb.alleles(newAlleles);
             }
@@ -150,7 +172,7 @@ import java.util.*;
             } else if (combineAltAlleleLikelihoods(oldGenotype, genotypeCount, newLikelihoods, hetLikelihoods, homAltLikelihoods)) {
                 gb.PL(newLikelihoods);
             }
-
+            
             newGenotypes.add(gb.make());
         }
         return vcb.genotypes(newGenotypes).make();
@@ -169,6 +191,7 @@ import java.util.*;
         final List<AFCalculationResult> results = new LinkedList<>();
 
         for ( final VariantContext subvc : makeAlleleConditionalContexts(vc) ) {
+            //System.err.print("Enter subvc in afcalc/IndependentAllelesDiploidExactAFCalculator.java/computeAlleleIndependentExact\n");
             final AFCalculationResult resultTracker = biAlleleExactModel.getLog10PNonRef(subvc, defaultPloidy, vc.getNAlleles() - 1, log10AlleleFrequencyPriors);
             results.add(resultTracker);
         }
@@ -188,6 +211,7 @@ import java.util.*;
 
         if ( nAltAlleles == 1 ) {
             // fast path for bi-allelic case.
+            //System.err.print("Xiao:afcalc/IndependentAllelesDiploidExactAFCalculator.java/makeAlleleConditionalContexts: vc unchanged for 1 altallele\n");
             return Collections.singletonList(vc);
         } else {
             // go through the work of ripping up the VC into its biallelic components
@@ -295,6 +319,7 @@ import java.util.*;
         final double XX = MathUtils.log10SumLog10(XXvalues);
 
         final double[] GLs = { XX, XB, BB};
+        //System.err.printf("Xiao:afcalc/IndependentAllelesDiploidExactAFCalculator.java/combineGLsPrecise: XX=%f XB=%f BB=%f altIndex=%d\n",XX,XB,BB,altIndex);
         return new GenotypeBuilder(original).PL(GLs).alleles(BIALLELIC_NOCALL).make();
     }
 
@@ -307,18 +332,28 @@ import java.util.*;
 
         final double lastPosteriorGt0 = sorted.get(0).getLog10PosteriorOfAFGT0();
         final double log10SingleAllelePriorOfAFGt0 = conditionalPNonRefResults.get(0).getLog10PriorOfAFGT0();
-
+        ////Print for debug
+        //for(int i=0; i<conditionalPNonRefResults.size();i++){
+            //System.err.printf("Xiao:afcalc/IndependentAllelesDiploidExactAFCalculator.java/applyMultiAllelicPriors:log10SingleAllelePriorOfAFGt0=%f\n", conditionalPNonRefResults.get(i).getLog10PriorOfAFGT0());
+            
+        //}
+        ////ENd print for debug
         for ( int i = 0; i < sorted.size(); i++ ) {
+            //System.err.printf("Xiao:afcalc/IndependentAllelesDiploidExactAFCalculator.java/applyMultiAllelicPriors: before sorted(%d).getLog10PosteriorOfAFGT0()=%f AFEQ0=%f\n",i,sorted.get(i).getLog10PosteriorOfAFGT0(),sorted.get(i).getLog10PosteriorOfAFEq0());
             if ( sorted.get(i).getLog10PosteriorOfAFGT0() > lastPosteriorGt0 ) {
                 throw new IllegalStateException("pNonRefResults not sorted: lastPosteriorGt0 " + lastPosteriorGt0 + " but current is " + sorted.get(i).getLog10PosteriorOfAFGT0());
             }
 
-                final double log10PriorAFGt0 = (i + 1) * log10SingleAllelePriorOfAFGt0;
+            //System.err.printf("before Xiao:afcalc/IndependentAllelesDiploidExactAFCalculator.java/applyMultiAllelicPriors:sorted.get(%d).getLog10PriorOfAFGT0()=%f getLog10PriorOfAFEQ0()=%f\n",i,sorted.get(i).getLog10PriorOfAFGT0(),sorted.get(i).getLog10PriorOfAFEq0());
+            
+            final double log10PriorAFGt0 = (i + 1) * log10SingleAllelePriorOfAFGt0;
             final double log10PriorAFEq0 = Math.log10(1 - Math.pow(10, log10PriorAFGt0));
             final double[] thetaTONPriors = new double[] { log10PriorAFEq0, log10PriorAFGt0 };
+            //System.err.printf("after Xiao:afcalc/IndependentAllelesDiploidExactAFCalculator.java/applyMultiAllelicPriors: i=%d thetaTONPriors{gt=%f eq=%f}\n",i,thetaTONPriors[1],thetaTONPriors[0]);
 
             // bind pNonRef for allele to the posterior value of the AF > 0 with the new adjusted prior
             sorted.set(i, sorted.get(i).copyWithNewPriors(MathUtils.normalizeLog10(thetaTONPriors)));
+            //System.err.printf("Xiao:afcalc/IndependentAllelesDiploidExactAFCalculator.java/applyMultiAllelicPriors: after sorted(%d).getLog10PosteriorOfAFGT0()=%f\n",i,sorted.get(i).getLog10PosteriorOfAFGT0());
         }
 
         return sorted;

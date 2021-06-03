@@ -30,7 +30,7 @@ public final class AFCalculationResult {
     private final double[] log10LikelihoodsOfAC;
     private final double[] log10PriorsOfAC;
     private final double[] log10PosteriorsOfAC;
-
+    //Xiao: this should be the probability that this allele does not exist
     private final Map<Allele, Double> log10pRefByAllele;
 
     /**
@@ -89,6 +89,23 @@ public final class AFCalculationResult {
         this.log10PriorsOfAC = Arrays.copyOf(log10PriorsOfAC, LOG_10_ARRAY_SIZES);
         this.log10PosteriorsOfAC = computePosteriors(log10LikelihoodsOfAC, log10PriorsOfAC);
         this.log10pRefByAllele = Collections.unmodifiableMap(new LinkedHashMap<>(log10pRefByAllele));
+        //System.err.printf("Xiao: afcalc/AFCalculationResult.java: create new AFresult\n");
+        //for(int i=0;i<this.alleleCountsOfMLE.length;i++){
+        //    System.err.printf("Xiao: afcalc/AFCalculationResult.java: alleleCountsOfMLE[%d]=%d\n",i,this.alleleCountsOfMLE[i]);
+        //} 
+        //for(int i=0;i<this.log10LikelihoodsOfAC.length;i++){
+        //    System.err.printf("Xiao: afcalc/AFCalculationResult.java: log10LikelihoodsOfAC[%d]=%f\n",i,this.log10LikelihoodsOfAC[i]);
+        //} 
+        //for(int i=0;i<this.log10PriorsOfAC.length;i++){
+        //    System.err.printf("Xiao: afcalc/AFCalculationResult.java: log10PriorsOfAC[%d]=%f\n",i,this.log10PriorsOfAC[i]);
+        //} 
+        //for(int i=0;i<this.log10PosteriorsOfAC.length;i++){
+        //    System.err.printf("Xiao: afcalc/AFCalculationResult.java: log10PosteriorsOfAC[%d]=%f\n",i,this.log10PosteriorsOfAC[i]);
+        //} 
+        //for(int i=0;i<this.log10pRefByAllele.size();i++){
+        //    System.err.printf("Xiao: afcalc/AFCalculationResult.java: log10pRefByAllele(allele)=%f\n",this.log10pRefByAllele.get(allelesUsedInGenotyping.get(i)));
+        //} 
+
     }
 
     /**
@@ -212,6 +229,7 @@ public final class AFCalculationResult {
      */
     public boolean isPolymorphic(final Allele allele, final double log10minPNonRef) {
         Utils.nonNull(allele);
+       // System.err.printf("AFresult getLog10PosteriorOfAFEq0ForAllele(allele)=%f\n",getLog10PosteriorOfAFEq0ForAllele(allele));
         return getLog10PosteriorOfAFEq0ForAllele(allele) + EPSILON < log10minPNonRef;
     }
 

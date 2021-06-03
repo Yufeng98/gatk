@@ -69,6 +69,8 @@ public final class AlleleSubsettingUtils {
             double newLog10GQ = -1;
             if (g.hasLikelihoods()) {
                 final double[] originalLikelihoods = g.getLikelihoods().getAsVector();
+                for(int i=0;i<originalLikelihoods.length;i++){
+                }
                 newLikelihoods = originalLikelihoods.length == expectedNumLikelihoods ?
                         MathUtils.scaleLogSpaceArrayForNumericalStability(Arrays.stream(subsettedLikelihoodIndices)
                                 .mapToDouble(idx -> originalLikelihoods[idx]).toArray()) : null;
@@ -90,8 +92,11 @@ public final class AlleleSubsettingUtils {
             else {
                 gb.noPL().noGQ();
             }
+            
+            for(int i=0;i<newLikelihoods.length;i++){
+            }
             GATKVariantContextUtils.makeGenotypeCall(g.getPloidy(), gb, assignmentMethod, newLikelihoods, allelesToKeep, g.getAlleles());
-
+            
             // restrict SAC to the new allele subset
             if (g.hasExtendedAttribute(GATKVCFConstants.STRAND_COUNT_BY_SAMPLE_KEY)) {
                 final int[] newSACs = subsetSACAlleles(g,  originalAlleles, allelesToKeep);
@@ -104,7 +109,11 @@ public final class AlleleSubsettingUtils {
                 final int[] newAD = IntStream.range(0, allelesToKeep.size()).map(n -> oldAD[allelePermutation.fromIndex(n)]).toArray();
                 gb.AD(newAD);
             }
-            newGTs.add(gb.make());
+            Genotype newgenotype = gb.make(); 
+            //for(int i=0;i<newgenotype.getPL().length;i++){
+            //
+            //}
+            newGTs.add(newgenotype);
         }
         return newGTs;
     }

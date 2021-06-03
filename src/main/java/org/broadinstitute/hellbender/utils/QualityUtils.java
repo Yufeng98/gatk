@@ -139,6 +139,7 @@ public final class QualityUtils {
      */
     public static double qualToErrorProb(final double qual) {
         Utils.validateArg( qual >= 0.0, () -> "qual must be >= 0.0 but got " + qual);
+        
         return Math.pow(10.0, qual / -10.0);
     }
 
@@ -156,6 +157,10 @@ public final class QualityUtils {
      * @return a probability (0.0-1.0)
      */
     public static double qualToErrorProb(final byte qual) {
+        double error= qualToErrorProbCache[(int)qual & 0xff];
+        //System.err.printf("float:qual=%d qualToErrorProb:"+Integer.toHexString(Float.floatToIntBits((float)error))+"1-prob:"+Integer.toHexString(Float.floatToIntBits(1-(float)error))+"\n",qual); 
+        //System.err.printf("doubl:qual=%d qualToErrorProb:"+Integer.toHexString(Float.floatToIntBits((float)(1.0-error)))+"\n",qual); 
+        
         return qualToErrorProbCache[(int)qual & 0xff]; // Map: 127 -> 127; -128 -> 128; -1 -> 255; etc.
     }
 
